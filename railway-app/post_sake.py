@@ -93,6 +93,11 @@ def post_to_gmb(access_token, sake, image_url):
 def main():
     print(f"[{datetime.now().isoformat()}] 日本酒GMB投稿 開始")
 
+    # GMB_LOCATIONが未設定の場合はスキップ（Google API承認待ち）
+    if not GMB_LOCATION or GMB_LOCATION.startswith("PLACEHOLDER") or "/" not in GMB_LOCATION:
+        print("[SKIP] GMB_LOCATIONが未設定です。Google API承認後に設定してください。")
+        sys.exit(0)
+
     # データ取得
     sake_list, _          = gh_get_json("sake_data.json")
     state,     state_sha  = gh_get_json("sake_state.json")

@@ -1,5 +1,5 @@
 {
-  "current_index": 9,
+  "current_index": 10,
   "history": [
     {
       "index": 0,
@@ -45,6 +45,11 @@
       "index": 8,
       "name": "霧筑波　特別純米酒",
       "posted_at": "2026-04-13T06:00:23.588994"
+    },
+    {
+      "index": 9,
+      "name": "木戸泉　K Zero Kの旋律　移調　transposition　火入",
+      "posted_at": "2026-04-13T11:04:30.785038"
     }
   ]
 }

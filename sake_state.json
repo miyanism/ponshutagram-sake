@@ -1,5 +1,5 @@
 {
-  "current_index": 8,
+  "current_index": 9,
   "history": [
     {
       "index": 0,
@@ -40,6 +40,11 @@
       "index": 7,
       "name": "甲子 うららか 純大生",
       "posted_at": "2026-04-12T11:00:19.086277"
+    },
+    {
+      "index": 8,
+      "name": "霧筑波　特別純米酒",
+      "posted_at": "2026-04-13T06:00:23.588994"
     }
   ]
 }

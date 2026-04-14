@@ -1,5 +1,5 @@
 {
-  "current_index": 10,
+  "current_index": 11,
   "history": [
     {
       "index": 0,
@@ -50,6 +50,11 @@
       "index": 9,
       "name": "木戸泉　K Zero Kの旋律　移調　transposition　火入",
       "posted_at": "2026-04-13T11:04:30.785038"
+    },
+    {
+      "index": 10,
+      "name": "澤乃井純米大辛口",
+      "posted_at": "2026-04-14T06:01:31.430330"
     }
   ]
 }

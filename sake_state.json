@@ -1,5 +1,5 @@
 {
-  "current_index": 12,
+  "current_index": 13,
   "history": [
     {
       "index": 0,
@@ -60,6 +60,11 @@
       "index": 11,
       "name": "彩來 特別純米 花澄み Kasumi 無ろ過生原酒 1800ml",
       "posted_at": "2026-04-14T11:04:55.610980"
+    },
+    {
+      "index": 12,
+      "name": "神亀 ガメラ60",
+      "posted_at": "2026-04-15T06:02:48.316713"
     }
   ]
 }

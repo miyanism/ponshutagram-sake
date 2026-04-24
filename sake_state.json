@@ -1,5 +1,5 @@
 {
-  "current_index": 31,
+  "current_index": 32,
   "history": [
     {
       "index": 0,
@@ -155,6 +155,11 @@
       "index": 30,
       "name": "而今 純米吟醸 山田錦 生",
       "posted_at": "2026-04-24T06:03:54.763062"
+    },
+    {
+      "index": 31,
+      "name": "新政 NO.6 S-type 2024年",
+      "posted_at": "2026-04-24T11:03:37.436992"
     }
   ]
 }

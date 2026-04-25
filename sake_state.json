@@ -1,5 +1,5 @@
 {
-  "current_index": 32,
+  "current_index": 33,
   "history": [
     {
       "index": 0,
@@ -160,6 +160,11 @@
       "index": 31,
       "name": "新政 NO.6 S-type 2024年",
       "posted_at": "2026-04-24T11:03:37.436992"
+    },
+    {
+      "index": 32,
+      "name": "新政 アッシュ直汲み2024年",
+      "posted_at": "2026-04-25T06:00:26.102083"
     }
   ]
 }

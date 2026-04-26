@@ -1,5 +1,5 @@
 {
-  "current_index": 34,
+  "current_index": 35,
   "history": [
     {
       "index": 0,
@@ -170,6 +170,11 @@
       "index": 33,
       "name": "而今 純米吟醸生酒 酒未来",
       "posted_at": "2026-04-25T11:00:47.481711"
+    },
+    {
+      "index": 34,
+      "name": "而今 大吟醸 簗瀬 YANASE",
+      "posted_at": "2026-04-26T06:00:28.558314"
     }
   ]
 }

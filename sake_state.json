@@ -1,5 +1,5 @@
 {
-  "current_index": 5,
+  "current_index": 6,
   "history": [
     {
       "index": 0,
@@ -25,6 +25,11 @@
       "index": 4,
       "name": "屋守 純米中取無調整生",
       "posted_at": "2026-03-25T20:20:33.037253"
+    },
+    {
+      "index": 5,
+      "name": "産土 穂増 六農醸",
+      "posted_at": "2026-05-13T06:00:54.304523"
     }
   ]
 }

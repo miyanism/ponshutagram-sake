@@ -30,6 +30,15 @@ RAW_BASE    = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{BRANCH}"
 
 
 # ── Google スプレッドシート ───────────────────────────
+def to_direct_image_url(url):
+    """Google DriveのビューURLを直接画像URLに変換する"""
+    import re
+    m = re.search(r"/file/d/([^/]+)", url)
+    if m:
+        return f"https://drive.google.com/uc?export=view&id={m.group(1)}"
+    return url
+
+
 def fetch_sake_list_from_sheets():
     """スプレッドシートからA列(銘柄名)・G列(テイスティングノート)・I列(画像URL)を取得"""
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
@@ -39,13 +48,17 @@ def fetch_sake_list_from_sheets():
     rows = list(reader)
 
     sake_list = []
-    for i, row in enumerate(rows[1:], start=2):  # 1行目はヘッダーをスキップ
+    for row in rows[1:]:  # 1行目はヘッダーをスキップ
         name = row[0].strip() if len(row) > 0 else ""
         note = row[6].strip() if len(row) > 6 else ""
         image_url = row[8].strip() if len(row) > 8 else ""
         if not name or not image_url:
             continue
-        sake_list.append({"name": name, "note": note, "image_url": image_url})
+        sake_list.append({
+            "name": name,
+            "note": note,
+            "image_url": to_direct_image_url(image_url),
+        })
 
     return sake_list
 

@@ -1,5 +1,5 @@
 {
-  "current_index": 6,
+  "current_index": 7,
   "history": [
     {
       "index": 0,
@@ -30,6 +30,11 @@
       "index": 5,
       "name": "産土 穂増 六農醸",
       "posted_at": "2026-05-13T06:00:54.304523"
+    },
+    {
+      "index": 6,
+      "name": "産土 穂増 七農醸",
+      "posted_at": "2026-05-13T11:02:53.248696"
     }
   ]
 }

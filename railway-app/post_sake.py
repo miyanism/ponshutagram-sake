@@ -4,6 +4,8 @@ Railway上で毎日20:00(JST)に実行される日本酒GMB自動投稿スクリ
 """
 import requests
 import base64
+import csv
+import io
 import json
 import os
 import sys
@@ -19,11 +21,33 @@ REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
 
 RESERVE_URL   = "https://www.tablecheck.com/shops/ponshutagram/reserve?utm_source=line"
 BRANCH        = "main"
+SHEET_ID      = "1EVZQNXnRGx0Pf4m9RWWXBFrtXoa0le43IGP6dGkgEKk"
 
 GH_HEADERS  = {"Authorization": f"token {GITHUB_TOKEN}",
                "Accept": "application/vnd.github+json"}
 API_BASE    = f"https://api.github.com/repos/{GITHUB_REPO}"
 RAW_BASE    = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{BRANCH}"
+
+
+# ── Google スプレッドシート ───────────────────────────
+def fetch_sake_list_from_sheets():
+    """スプレッドシートからA列(銘柄名)・G列(テイスティングノート)・I列(画像URL)を取得"""
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+    r = requests.get(url)
+    r.raise_for_status()
+    reader = csv.reader(io.StringIO(r.content.decode("utf-8")))
+    rows = list(reader)
+
+    sake_list = []
+    for i, row in enumerate(rows[1:], start=2):  # 1行目はヘッダーをスキップ
+        name = row[0].strip() if len(row) > 0 else ""
+        note = row[6].strip() if len(row) > 6 else ""
+        image_url = row[8].strip() if len(row) > 8 else ""
+        if not name or not image_url:
+            continue
+        sake_list.append({"name": name, "note": note, "image_url": image_url})
+
+    return sake_list
 
 
 # ── GitHub ユーティリティ ─────────────────────────────
@@ -99,7 +123,7 @@ def main():
         sys.exit(0)
 
     # データ取得
-    sake_list, _          = gh_get_json("sake_data.json")
+    sake_list              = fetch_sake_list_from_sheets()
     state,     state_sha  = gh_get_json("sake_state.json")
 
     idx = state.get("current_index", 0)
@@ -110,7 +134,7 @@ def main():
         sys.exit(0)
 
     sake = sake_list[idx]
-    image_url = f"{RAW_BASE}/images/{sake['num']}.JPG"
+    image_url = sake["image_url"]
     print(f"銘柄: {sake['name']}  画像URL: {image_url}")
 
     # GMB 投稿

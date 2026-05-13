@@ -27,7 +27,7 @@ print("     「認証情報を作成」→「OAuthクライアントID」")
 print("  5. アプリの種類:「デスクトップアプリ」で作成")
 print("  6. JSONをダウンロードして client_secret.json として保存")
 print()
-input("client_secret.json を同じフォルダに置いたら Enter を押してください...")
+# input("client_secret.json を同じフォルダに置いたら Enter を押してください...")
 
 # OAuth2 フロー実行
 flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
@@ -35,7 +35,7 @@ creds = flow.run_local_server(port=0)
 
 print()
 print("=" * 60)
-print("✅ 認証成功！以下をRailwayの環境変数に設定してください")
+print("[OK] 認証成功！以下をRailwayの環境変数に設定してください")
 print("=" * 60)
 print(f"GOOGLE_CLIENT_ID     = {creds.client_id}")
 print(f"GOOGLE_CLIENT_SECRET = {creds.client_secret}")
@@ -57,7 +57,11 @@ for acc in accounts:
     print(f"  アカウント名: {acc['name']}  ({acc.get('accountName', '')})")
 
 print()
-account_name = input("使用するアカウント名を入力してください (例: accounts/123456789): ").strip()
+if not accounts:
+    print("アカウントが見つかりませんでした。")
+    exit(1)
+account_name = accounts[0]["name"]
+print(f"アカウント自動選択: {account_name}")
 
 # ロケーション一覧取得
 print()

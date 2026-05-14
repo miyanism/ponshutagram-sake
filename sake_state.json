@@ -1,5 +1,5 @@
 {
-  "current_index": 8,
+  "current_index": 9,
   "history": [
     {
       "index": 0,
@@ -40,6 +40,11 @@
       "index": 7,
       "name": "黒龍 火いら寿",
       "posted_at": "2026-05-14T06:04:42.924749"
+    },
+    {
+      "index": 8,
+      "name": "黒龍 大吟醸 龍 50周年記念",
+      "posted_at": "2026-05-14T11:00:23.303323"
     }
   ]
 }

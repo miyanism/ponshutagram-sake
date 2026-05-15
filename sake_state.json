@@ -1,5 +1,5 @@
 {
-  "current_index": 10,
+  "current_index": 11,
   "history": [
     {
       "index": 0,
@@ -50,6 +50,11 @@
       "index": 9,
       "name": "而今 千本錦",
       "posted_at": "2026-05-15T06:01:45.367333"
+    },
+    {
+      "index": 10,
+      "name": "而今 特純無濾過生原酒",
+      "posted_at": "2026-05-15T11:03:01.640406"
     }
   ]
 }

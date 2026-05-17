@@ -1,5 +1,5 @@
 {
-  "current_index": 12,
+  "current_index": 13,
   "history": [
     {
       "index": 0,
@@ -60,6 +60,11 @@
       "index": 11,
       "name": "而今 NABARI 純米大吟醸",
       "posted_at": "2026-05-17T06:00:51.429654"
+    },
+    {
+      "index": 12,
+      "name": "而今 大吟醸 簗瀬 YANASE",
+      "posted_at": "2026-05-17T11:01:38.429110"
     }
   ]
 }

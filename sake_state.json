@@ -1,5 +1,5 @@
 {
-  "current_index": 13,
+  "current_index": 14,
   "history": [
     {
       "index": 0,
@@ -65,6 +65,11 @@
       "index": 12,
       "name": "而今 大吟醸 簗瀬 YANASE",
       "posted_at": "2026-05-17T11:01:38.429110"
+    },
+    {
+      "index": 13,
+      "name": "アルプス正宗 純米吟醸 山恵錦 生原",
+      "posted_at": "2026-05-18T06:01:05.444693"
     }
   ]
 }

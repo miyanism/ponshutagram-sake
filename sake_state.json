@@ -1,5 +1,5 @@
 {
-  "current_index": 2,
+  "current_index": 3,
   "history": [
     {
       "index": 0,
@@ -10,6 +10,11 @@
       "index": 1,
       "name": "新政 タンジェリン2025",
       "posted_at": "2026-06-07T11:03:14.898677"
+    },
+    {
+      "index": 2,
+      "name": "新政 X-type2025",
+      "posted_at": "2026-06-08T06:00:47.097453"
     }
   ]
 }

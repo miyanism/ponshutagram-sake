@@ -135,27 +135,42 @@ def normalize(text: str) -> str:
     return joined
 
 
-FOLDER_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
+# ソース明示タグ:  投稿:short/日々醸造_日日山田錦_20260515  /  投稿:scenario/20260428_おっちゃん酒
+SOURCE_TAG = re.compile(r"(short|scenario)/([^\s#、。,]+)")
+# 無印の旧タグ（scenario扱い）:  投稿:20260428_おっちゃん酒
+BARE_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
 
 
 def match_post(caption: str, index: list):
     """投稿を index に照合する。
-    1) キャプション中のフォルダ名タグ（例 投稿:20260428_おっちゃん酒）を厳密照合（最優先）
-    2) 無ければキャプション本文のファジー照合にフォールバック
+    1) ソース明示タグ（short/... ・ scenario/...）で厳密照合（最優先）
+    2) 無印の \\d{8}_ タグ（scenario）で厳密照合
+    3) 無ければキャプション本文のファジー照合
     戻り値: (entry or None, 照合方法の文字列)
     """
-    # --- 1) フォルダ名タグ ---
-    by_folder = {e["folder"]: e for e in index}
-    for tag in FOLDER_TAG.findall(caption or ""):
+    caption = caption or ""
+
+    # --- 1) ソース明示タグ ---
+    for src, ident in SOURCE_TAG.findall(caption):
+        for e in index:
+            if e["source"] == src and e["folder"] == ident:
+                return e, f"tag:{src}"
+        # 識別子ゆれ: 同ソース内でテーマ一致
+        for e in index:
+            if e["source"] == src and (e["theme"] == ident or ident in e["folder"]):
+                return e, f"tag:{src}~"
+
+    # --- 2) 無印タグ（scenario） ---
+    by_folder = {e["folder"]: e for e in index if e["source"] == "scenario"}
+    for tag in BARE_TAG.findall(caption):
         if tag in by_folder:
-            return by_folder[tag], "tag"
-        # タグの日付部分ゆれを許容: テーマ名一致でも拾う
+            return by_folder[tag], "tag:scenario"
         theme = tag.split("_", 1)[1] if "_" in tag else ""
         for e in index:
-            if theme and e["theme"] == theme:
-                return e, "tag-theme"
+            if e["source"] == "scenario" and theme and e["theme"] == theme:
+                return e, "tag:scenario~"
 
-    # --- 2) ファジー照合 ---
+    # --- 3) ファジー照合 ---
     target = normalize(caption)
     if not target:
         return None, "none"
@@ -180,9 +195,25 @@ def already_replied(comment: dict) -> bool:
 
 def build_context(entry) -> str:
     if not entry:
-        body = "（この投稿の詳細文脈は不明。コメント内容のみから、議論の軸・文体を守って無難に返信する）"
+        body = ("【返信トーン指針】投稿の詳細が不明。議論の軸・文体を守り、無難に・断定を避けて返信する。\n"
+                "（この投稿の詳細文脈は不明。コメント内容のみから返信）")
+    elif entry.get("source") == "short":
+        # 日本酒紹介動画: 銘柄の魅力を伝え、来店・飲み比べ・体験に繋げるトーン
+        body = ("【返信トーン指針】この投稿は特定銘柄の紹介動画。コメントには銘柄の魅力・造りの面白さを伝え、"
+                "来店や飲み比べ・実際に味わう体験に繋げる。論戦より『紹介・おすすめ』の姿勢。"
+                "質問や疑問には下の『ファクトチェック済みの事実』に立脚して正確に答える。\n\n"
+                f"銘柄: {entry['theme']}")
+        if entry.get("caption"):
+            body += f"\n\n投稿キャプション:\n{entry['caption']}"
+        if entry.get("facts"):
+            body += f"\n\nファクトチェック済みの事実（出典付き。質問・主張にはここに立脚し、ここに無い数値や固有名詞は創作しない）:\n{entry['facts']}"
+        if entry.get("script"):
+            body += f"\n\n動画台本:\n{entry['script']}"
     else:
-        body = f"投稿テーマ: {entry['theme']}"
+        # 文化・主張系: 主張に立脚して信念を持って論じるトーン
+        body = ("【返信トーン指針】この投稿は文化・主張系。批判・論戦には下の『根拠・出典』に立脚し、"
+                "信念を持って堂々と応じる（媚びず・攻撃せず）。\n\n"
+                f"投稿テーマ: {entry['theme']}")
         if entry.get("caption"):
             body += f"\n\n投稿キャプション:\n{entry['caption']}"
         if entry.get("slide_text"):
@@ -191,7 +222,7 @@ def build_context(entry) -> str:
             body += f"\n\n投稿の根拠・出典（コラム本文。批判への反論はここに立脚する）:\n{entry['note']}"
     return (f"{body}\n\n【店舗情報（聞かれた時だけ・確定値）】\n{STORE_FACTS}"
             f"\n\n【誤情報の固定訂正（最優先・厳守）】\n"
-            f"※ここに書かれた値が最優先。上の『投稿の根拠・出典』本文に異なる数字や記述があっても、"
+            f"※ここに書かれた値が最優先。上の本文に異なる数字や記述があっても、"
             f"必ずこちらを正とし、古い数字（例:160人）は使わないこと。\n{FACT_CONSTANTS}")
 
 

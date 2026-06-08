@@ -1,0 +1,399 @@
+# -*- coding: utf-8 -*-
+"""
+reply_comments.py  —  Railway cron 実行（例: */10 * * * *）
+
+Instagram投稿についた未返信コメントを取得し、
+投稿の文脈（caption_index.json）を踏まえて Claude haiku で返信を生成し、
+Instagram Graph API で公式返信する。
+
+既存の GMB 口コミ自動返信 (reply_reviews.py) と同型。
+二重返信防止は「コメントの返信一覧に自分のIDが居るか」で判定するため、
+永続 state ファイルは不要（Railway の揮発FSでも安全）。
+
+必要な環境変数:
+  IG_USER_ID        … Instagram Business アカウントの user id（数値）
+  IG_ACCESS_TOKEN   … 長期アクセストークン（instagram_manage_comments 権限）
+  ANTHROPIC_API_KEY … Claude API キー
+  GRAPH_VERSION     … 省略可（既定 v21.0）
+  MEDIA_LOOKBACK    … 省略可。直近何件の投稿を巡回するか（既定 25）
+  MATCH_THRESHOLD   … 省略可。キャプション照合の類似度閾値（既定 0.55）
+  DRY_RUN           … "1" なら生成だけして投稿しない（テスト用）
+"""
+import os
+import re
+import sys
+import json
+import difflib
+import urllib.parse
+import urllib.request
+
+import anthropic
+
+
+def _load_dotenv(path: str):
+    """依存なしの簡易 .env ローダ（ローカルテスト用。Railwayでは環境変数を使う）。"""
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv(os.path.join(os.path.dirname(__file__), ".env.local"))
+
+# Instagram API with Instagram Login は graph.instagram.com を使う
+GRAPH = os.environ.get("IG_GRAPH_BASE", "https://graph.instagram.com")
+IG_USER_ID = os.environ.get("IG_USER_ID", "")
+TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
+LOOKBACK = int(os.environ.get("MEDIA_LOOKBACK", "25"))
+THRESHOLD = float(os.environ.get("MATCH_THRESHOLD", "0.55"))
+DRY_RUN = os.environ.get("DRY_RUN") == "1"
+
+INDEX_PATH = os.path.join(os.path.dirname(__file__), "caption_index.json")
+MODEL = "claude-haiku-4-5"
+
+# 検証済みの店舗ファクト（コメントで店舗を聞かれた時はここ「だけ」を使う）
+STORE_FACTS = """店名: ポン酒タグラム The Bar
+住所: 大阪市中央区安堂寺町1-3-13 谷町もりおかビル1F（最寄り: 谷町六丁目）
+席数: 14席 / 営業: 18:00 開店
+予約: https://www.tablecheck.com/shops/ponshutagram/reserve"""
+
+# 誤情報の固定訂正（CLAUDE.md「事実定数」より。学習知識による創作を上書きする）
+FACT_CONSTANTS = """獺祭（旭酒造）の蔵人は約220〜230名。「社員160人」「320人」等は誤情報なので絶対に使わない。
+獺祭は自動製麹機を導入していない。「一度導入して撤回した」という語りも誤情報なので書かない。"""
+
+SYSTEM_PROMPT = """あなたは日本酒バー「ポン酒タグラム The Bar」の中の人「ミヤーン」本人として、
+リール動画・投稿についたコメントに返信します。
+
+# 議論の軸（固定・全返信で一貫させる）
+- 「客は知識や正しい言葉を持たなくていい。預けてもらえれば、読み解くのは店の仕事」
+- 「酒は酔う道具ではなく、整う文化」
+この軸と矛盾する返信（例:「辛口と頼むな」と読める表現）は書かない。
+
+# 文体ルール
+- 3層構造: 冒頭は静かに短く断言（——で間を作る）／中盤は熱量・口語可／締めは余白で終わる。
+- 語尾は「〜です」「〜かもしれません」「〜感じです」「〜かな」。
+- 禁止: 「〜なんですよ」「〜なんですよね」、断定の押しつけ（〜すべき）、説明過多（なぜなら〜だからです）。
+- 絵文字は使っても1個まで。
+- 同業・経営者には専門知識を共有する「知的な愛嬌」、一般客には踏み込みすぎない安心感。
+
+# 批判・論戦への向き合い方（信念を持つ）
+- 高圧的・批判的なコメントには、信念をもって論じる。安易に謝って引き下がらない。
+- 下記「投稿の根拠・出典」に立脚し、事実・一次ソースを示して自分の立場を語る。ただし相手を論破・攻撃しない。
+- 相手の経験は立て、角を残さない。勝ち負けにせず、最後に問いを一つ返してスレッドが続く余地を残してよい。
+- 相手の技術的指摘が誤りでも「間違いです」と切らない。誤解の出所を推定し、知的な小ネタとして返す。
+
+# 事実の扱い（厳守・ブランドの生命線）
+- 「投稿の根拠・出典」「店舗情報」に無い具体（年号・数字・固有名詞・席数・価格・店名）を絶対に創作しない。
+- 裏が取れないことは断言せず「〜とされています」「〜かもしれません」の余白表現に落とす。
+- 店舗・予約・場所を聞かれたら「店舗情報」の確定値だけを使い、それ以外はプロフィール/DMへ誘導。
+
+# 形式
+- 1〜3文程度。冗長にしない。
+- 宣伝・スパム・無関係な売り込みへの返信は "SKIP" とだけ出力する。
+- 出力は返信本文のみ。前置き・引用符・説明は書かない。"""
+
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+
+
+def api_get(path: str, params: dict) -> dict:
+    params = dict(params)
+    params["access_token"] = TOKEN
+    url = f"{GRAPH}/{path}?{urllib.parse.urlencode(params)}"
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return json.load(r)
+
+
+def api_post(path: str, data: dict) -> dict:
+    data = dict(data)
+    data["access_token"] = TOKEN
+    body = urllib.parse.urlencode(data).encode()
+    req = urllib.request.Request(f"{GRAPH}/{path}", data=body, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def load_index() -> list:
+    with open(INDEX_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def normalize(text: str) -> str:
+    import re
+    if not text:
+        return ""
+    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("#")]
+    joined = "".join(lines)
+    joined = re.sub(r"@[A-Za-z0-9_.]+", "", joined)   # 先頭などの@メンション除去
+    joined = re.sub(r"\s+", "", joined)
+    for ch in ("—", "ー", "〜", "～", "←", "→", "‥", "…"):
+        joined = joined.replace(ch, "")
+    return joined
+
+
+FOLDER_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
+
+
+def match_post(caption: str, index: list):
+    """投稿を index に照合する。
+    1) キャプション中のフォルダ名タグ（例 投稿:20260428_おっちゃん酒）を厳密照合（最優先）
+    2) 無ければキャプション本文のファジー照合にフォールバック
+    戻り値: (entry or None, 照合方法の文字列)
+    """
+    # --- 1) フォルダ名タグ ---
+    by_folder = {e["folder"]: e for e in index}
+    for tag in FOLDER_TAG.findall(caption or ""):
+        if tag in by_folder:
+            return by_folder[tag], "tag"
+        # タグの日付部分ゆれを許容: テーマ名一致でも拾う
+        theme = tag.split("_", 1)[1] if "_" in tag else ""
+        for e in index:
+            if theme and e["theme"] == theme:
+                return e, "tag-theme"
+
+    # --- 2) ファジー照合 ---
+    target = normalize(caption)
+    if not target:
+        return None, "none"
+    best, best_ratio = None, 0.0
+    for e in index:
+        if not e["caption_norm"]:
+            continue
+        ratio = difflib.SequenceMatcher(None, target, e["caption_norm"]).ratio()
+        if ratio > best_ratio:
+            best, best_ratio = e, ratio
+    return (best, f"fuzzy:{best_ratio:.2f}") if best_ratio >= THRESHOLD else (None, f"fuzzy:{best_ratio:.2f}")
+
+
+def already_replied(comment: dict) -> bool:
+    """コメントの返信一覧に自分（IG_USER_ID）の返信があれば True。"""
+    replies = comment.get("replies", {}).get("data", [])
+    for rp in replies:
+        if str(rp.get("from", {}).get("id")) == str(IG_USER_ID):
+            return True
+    return False
+
+
+def build_context(entry) -> str:
+    if not entry:
+        body = "（この投稿の詳細文脈は不明。コメント内容のみから、議論の軸・文体を守って無難に返信する）"
+    else:
+        body = f"投稿テーマ: {entry['theme']}"
+        if entry.get("caption"):
+            body += f"\n\n投稿キャプション:\n{entry['caption']}"
+        if entry.get("slide_text"):
+            body += f"\n\nスライド本文:\n{entry['slide_text']}"
+        if entry.get("note"):
+            body += f"\n\n投稿の根拠・出典（コラム本文。批判への反論はここに立脚する）:\n{entry['note']}"
+    return (f"{body}\n\n【店舗情報（聞かれた時だけ・確定値）】\n{STORE_FACTS}"
+            f"\n\n【誤情報の固定訂正（最優先・厳守）】\n"
+            f"※ここに書かれた値が最優先。上の『投稿の根拠・出典』本文に異なる数字や記述があっても、"
+            f"必ずこちらを正とし、古い数字（例:160人）は使わないこと。\n{FACT_CONSTANTS}")
+
+
+ANALYZE_INSTRUCTION = """上記の投稿文脈・店舗情報・誤情報訂正を踏まえ、付いたコメントを分析し、JSONで返答してください。
+
+# 分類ラベル（label）
+- 称賛: 好意的な感想・お礼
+- 質問: 頼み方・用語・銘柄・店舗など実用的な問い
+- 援護: 第三者が店の主張を擁護・代弁
+- 同業: 飲食店・ソムリエ等プロからのコメント
+- 批判論戦: 論を立てた反論・強い言葉
+- 荒らし: 中身のない煽り・誹謗
+- スパム: 宣伝・無関係な売り込み
+- 無関係: 投稿と無関係
+
+# 振り分け（tier）
+- auto: そのまま自動投稿してよい安全なもの → 称賛、簡単な質問、軽い援護のみ
+- review: 人間の最終確認が必要 → 批判論戦・荒らし・踏み込んだ同業議論・再返信(ラリー)・
+  皮肉や多義で誤読の恐れがあるもの・事実を争う内容。少しでも迷ったら review。
+- skip: 返信不要 → スパム、無関係
+
+# reply（返信案）
+文体ルール・議論の軸を守って作成。tierがskipなら空文字。
+
+# reflection（内省メモ・1行）
+"内省: 筋⭕ 誤読⭕（皮肉解釈でも成立） 事実⭕（出典に基づく）" の形式で、
+筋の一貫性／相手意図の誤読/事実裏取りの3点を自己採点。懸念があれば⚠️で記す。
+
+必ず次のJSONのみを出力（前後に文章を付けない）:
+{"label":"...","tier":"auto|review|skip","reply":"...","reflection":"..."}"""
+
+
+def analyze_comment(comment_text: str, context: str, is_rally: bool) -> dict:
+    rally_note = ""
+    if is_rally:
+        rally_note = ("\n\n※これは店の返信への相手の『再返信(ラリー)』です。"
+                      "時系列を踏まえ、相手が軟化/合流/収束していないか見極める。"
+                      "必ず tier=review にする。")
+    msg = client.messages.create(
+        model=MODEL,
+        max_tokens=500,
+        system=SYSTEM_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": f"# 投稿の文脈\n{context}\n\n# 付いたコメント\n{comment_text}{rally_note}\n\n{ANALYZE_INSTRUCTION}",
+        }],
+    )
+    raw = msg.content[0].text.strip()
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        data = json.loads(m.group(0) if m else raw)
+    except Exception:
+        data = {"label": "不明", "tier": "review", "reply": raw, "reflection": "内省: ⚠️ JSON解析失敗"}
+    if is_rally:
+        data["tier"] = "review"
+    return data
+
+
+def fetch_recent_media() -> list:
+    res = api_get(f"{IG_USER_ID}/media", {
+        "fields": "id,caption,timestamp,permalink",
+        "limit": LOOKBACK,
+    })
+    return res.get("data", [])
+
+
+def fetch_comments(media_id: str) -> list:
+    res = api_get(f"{media_id}/comments", {
+        "fields": "id,text,username,from,timestamp,replies{id,from,text,timestamp}",
+        "limit": 50,
+    })
+    return res.get("data", [])
+
+
+def analyze_thread(c: dict):
+    """トップコメントのスレッド状態を判定。
+    戻り値: (status, target_text, target_id, username)
+      new     … まだ店が返信していない → 対象はトップコメント
+      rally   … 店の返信の後に相手/第三者が再返信 → 対象は最新の他者返信
+      handled … 店が返信済みで新たな動きなし → 処理不要
+    """
+    replies = c.get("replies", {}).get("data", [])
+    ours = [r for r in replies if str(r.get("from", {}).get("id")) == str(IG_USER_ID)]
+    if not ours:
+        return "new", (c.get("text") or ""), c["id"], c.get("username")
+    last_our_ts = max(r.get("timestamp", "") for r in ours)
+    later = [r for r in replies
+             if str(r.get("from", {}).get("id")) != str(IG_USER_ID)
+             and r.get("timestamp", "") > last_our_ts]
+    if later:
+        latest = max(later, key=lambda r: r.get("timestamp", ""))
+        return "rally", (latest.get("text") or ""), latest.get("id", c["id"]), latest.get("username")
+    return "handled", None, None, None
+
+
+# ---- 処理済みコメントの状態管理（review通知の重複防止） ----
+# Railwayでは永続ボリュームのマウント先を STATE_DIR で指定（例 /data）。ローカルはスクリプト隣。
+STATE_PATH = os.path.join(os.environ.get("STATE_DIR", os.path.dirname(__file__)), "comment_state.json")
+
+
+def load_state() -> set:
+    if os.path.exists(STATE_PATH):
+        with open(STATE_PATH, encoding="utf-8") as f:
+            return set(json.load(f).get("handled", []))
+    return set()
+
+
+def save_state(handled: set):
+    os.makedirs(os.path.dirname(STATE_PATH) or ".", exist_ok=True)
+    # 肥大化防止: 直近5000件だけ保持
+    trimmed = sorted(handled)[-5000:]
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handled": trimmed}, f, ensure_ascii=False, indent=2)
+
+
+# ---- レビュー待ちをLINEへ通知 ----
+LINE_TOKEN = os.environ.get("LINE_CHANNEL_TOKEN", "")
+LINE_TO = os.environ.get("LINE_TO_USER_ID", "")
+
+
+def notify_review(item: dict):
+    """review階層の下書きをLINE Messaging APIでpush。未設定ならコンソール出力のみ。"""
+    msg = (f"🍶 レビュー待ちコメント [{item['label']}/{item['status']}]\n"
+           f"投稿: {item['tag']}\n"
+           f"👤 @{item['username']}\n"
+           f"💬 {item['comment']}\n\n"
+           f"↩️ 下書き案:\n{item['reply']}\n\n"
+           f"{item['reflection']}\n"
+           f"🔗 {item.get('permalink','')}")
+    if not (LINE_TOKEN and LINE_TO):
+        print("  [REVIEW→LINE未設定]\n" + "\n".join("    " + l for l in msg.splitlines()))
+        return
+    body = json.dumps({"to": LINE_TO, "messages": [{"type": "text", "text": msg[:4900]}]}).encode()
+    req = urllib.request.Request(
+        "https://api.line.me/v2/bot/message/push", data=body, method="POST",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {LINE_TOKEN}"})
+    try:
+        urllib.request.urlopen(req, timeout=30)
+    except Exception as e:
+        print(f"  [LINE送信失敗] {e}")
+
+
+def main():
+    if not (IG_USER_ID and TOKEN and os.environ.get("ANTHROPIC_API_KEY")):
+        print("[FATAL] 必須環境変数が未設定 (IG_USER_ID / IG_ACCESS_TOKEN / ANTHROPIC_API_KEY)")
+        sys.exit(1)
+
+    index = load_index()
+    state = load_state()
+    print(f"[start] index={len(index)}件, lookback={LOOKBACK}, dry_run={DRY_RUN}, "
+          f"LINE={'on' if (LINE_TOKEN and LINE_TO) else 'off'}")
+
+    media = fetch_recent_media()
+    auto_posted = review_queued = skipped = 0
+
+    for m in media:
+        entry, how = match_post(m.get("caption", ""), index)
+        context = build_context(entry)
+        tag = f"{entry['theme']}/{how}" if entry else f"未照合/{how}"
+
+        for c in fetch_comments(m["id"]):
+            if str(c.get("from", {}).get("id")) == str(IG_USER_ID):
+                continue
+            status, text, cid, username = analyze_thread(c)
+            if status == "handled":
+                continue
+            text = (text or "").strip()
+            if not text or cid in state:
+                continue
+
+            res = analyze_comment(text, context, is_rally=(status == "rally"))
+            label = res.get("label", "不明")
+            tier = res.get("tier", "review")
+            reply = (res.get("reply") or "").strip()
+            reflection = res.get("reflection", "")
+
+            if tier == "skip" or not reply:
+                print(f"  [skip] ({tag}) [{label}] @{username}: {text[:30]}")
+                skipped += 1
+                state.add(cid)
+                continue
+
+            if tier == "auto" and status == "new":
+                print(f"  [auto] ({tag}) [{label}] @{username}: {text[:24]} -> {reply}")
+                if not DRY_RUN:
+                    api_post(f"{cid}/replies", {"message": reply})
+                auto_posted += 1
+                state.add(cid)
+            else:
+                print(f"  [REVIEW] ({tag}) [{label}/{status}] @{username}: {text[:24]}")
+                notify_review({
+                    "tag": tag, "label": label, "status": status, "username": username,
+                    "comment": text, "reply": reply, "reflection": reflection,
+                    "permalink": m.get("permalink", ""),
+                })
+                review_queued += 1
+                state.add(cid)
+
+    if not DRY_RUN:
+        save_state(state)
+    print(f"[done] auto_posted={auto_posted}, review_queued={review_queued}, skipped={skipped}")
+
+
+if __name__ == "__main__":
+    main()

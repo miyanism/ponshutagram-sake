@@ -286,6 +286,45 @@ def analyze_comment(comment_text: str, context: str, is_rally: bool) -> dict:
     return data
 
 
+VERIFY_PROMPT = """あなたは日本酒バー「ポン酒タグラム」の校閲・リスク審査担当です。
+公開コメント返信の下書きを、敵対的な読み手（重箱の隅をつつく・揚げ足を取る層）の視点で厳しく検証します。
+
+# 検証3観点
+1. 事実裏取り: 下書き中の事実主張（数値・年号・固有名詞・製法・受賞・価格・店舗情報など）が、
+   下記「投稿の文脈／ファクト／店舗情報／誤情報訂正」で裏付けられるか。裏付けの無い断定・推測は不可。
+2. 誤読耐性: 元コメントを「額面どおり」「皮肉」「攻撃的」のどの解釈で読んでも、下書きが破綻しないか。
+3. 揚げ足耐性: 言い過ぎ・決めつけ・議論の軸との矛盾・曖昧で揚げ足を取られる表現が無いか。
+
+# 判定（verdict）
+- ok: そのまま公開して安全。
+- revise: 軽微な隙があるが、安全な表現に直せば公開可。revised_reply に直した全文を入れる。
+- escalate: 事実の裏が取れない／誤読リスク／論点が割れる等で自動投稿は危険。人間レビューへ回す。
+
+迷ったら必ず安全側（escalate）に倒す。出力は次のJSONのみ（前後に文章を付けない）:
+{"verdict":"ok|revise|escalate","revised_reply":"（reviseの時のみ直した全文。それ以外は空文字）","issues":"判断理由を一行で"}"""
+
+
+def verify_reply(comment_text: str, context: str, draft: str) -> dict:
+    """auto候補の下書きを敵対的に検証する内省パス。"""
+    msg = client.messages.create(
+        model=MODEL,
+        max_tokens=500,
+        system=VERIFY_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": f"# 投稿の文脈\n{context}\n\n# 付いたコメント\n{comment_text}\n\n"
+                       f"# 返信の下書き（これを検証）\n{draft}\n\n上記を検証し、JSONで判定してください。",
+        }],
+    )
+    raw = msg.content[0].text.strip()
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        return json.loads(m.group(0) if m else raw)
+    except Exception:
+        # 解析できなければ安全側でescalate
+        return {"verdict": "escalate", "revised_reply": "", "issues": "検証結果のJSON解析失敗"}
+
+
 def fetch_recent_media() -> list:
     res = api_get(f"{IG_USER_ID}/media", {
         "fields": "id,caption,timestamp,permalink",
@@ -403,9 +442,29 @@ def main():
                 continue
 
             if tier == "auto":
-                print(f"  [auto] ({tag}) [{label}] @{username}: {text[:24]} -> {reply}")
+                # 投稿前に敵対的検証パス（揚げ足取り対策）
+                v = verify_reply(text, context, reply)
+                verdict = v.get("verdict", "escalate")
+                if verdict == "ok":
+                    final = reply
+                elif verdict == "revise" and (v.get("revised_reply") or "").strip():
+                    final = v["revised_reply"].strip()
+                else:
+                    # escalate → 自動投稿せず人間レビューへ降格
+                    print(f"  [auto→REVIEW] ({tag}) [{label}] @{username}: {text[:24]} 理由:{v.get('issues','')[:40]}")
+                    notify_review({
+                        "tag": tag, "label": f"{label}・要確認", "username": username,
+                        "comment": text, "reply": reply,
+                        "reflection": f"{reflection}\n⚠️検証: {v.get('issues','')}",
+                        "permalink": m.get("permalink", ""),
+                    })
+                    review_queued += 1
+                    state.add(cid)
+                    continue
+                v_mark = "検証ok" if verdict == "ok" else "検証→修正"
+                print(f"  [auto/{v_mark}] ({tag}) [{label}] @{username}: {text[:20]} -> {final}")
                 if not DRY_RUN:
-                    api_post(f"{cid}/replies", {"message": reply})
+                    api_post(f"{cid}/replies", {"message": final})
                 auto_posted += 1
                 state.add(cid)
             else:

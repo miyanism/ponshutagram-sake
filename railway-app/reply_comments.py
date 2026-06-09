@@ -52,6 +52,11 @@ TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 LOOKBACK = int(os.environ.get("MEDIA_LOOKBACK", "25"))
 THRESHOLD = float(os.environ.get("MATCH_THRESHOLD", "0.55"))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
+# 公開時点より前の既存コメント（バックログ）を無視する境界。ISO例 "2026-06-08T13:00:00+0000"
+REPLY_AFTER = os.environ.get("REPLY_AFTER", "")
+# 既に返信が付いているコメントはスキップ（手動対応済み・二重返信防止）。
+# Instagram Login API は返信(reply)の作者(from)を返さないため、作者判定ではなく「返信の有無」で守る。
+SKIP_IF_REPLIED = os.environ.get("SKIP_IF_REPLIED", "1") == "1"
 
 INDEX_PATH = os.path.join(os.path.dirname(__file__), "caption_index.json")
 MODEL = "claude-haiku-4-5"
@@ -290,32 +295,13 @@ def fetch_recent_media() -> list:
 
 
 def fetch_comments(media_id: str) -> list:
+    # 注意: Instagram Login API は返信(reply)の作者(from)を返さない。
+    # そのため返信の作者判定はできず、トップコメントの from と「返信の有無」で扱う。
     res = api_get(f"{media_id}/comments", {
-        "fields": "id,text,username,from,timestamp,replies{id,from,text,timestamp}",
+        "fields": "id,text,timestamp,from,replies{id}",
         "limit": 50,
     })
     return res.get("data", [])
-
-
-def analyze_thread(c: dict):
-    """トップコメントのスレッド状態を判定。
-    戻り値: (status, target_text, target_id, username)
-      new     … まだ店が返信していない → 対象はトップコメント
-      rally   … 店の返信の後に相手/第三者が再返信 → 対象は最新の他者返信
-      handled … 店が返信済みで新たな動きなし → 処理不要
-    """
-    replies = c.get("replies", {}).get("data", [])
-    ours = [r for r in replies if str(r.get("from", {}).get("id")) == str(IG_USER_ID)]
-    if not ours:
-        return "new", (c.get("text") or ""), c["id"], c.get("username")
-    last_our_ts = max(r.get("timestamp", "") for r in ours)
-    later = [r for r in replies
-             if str(r.get("from", {}).get("id")) != str(IG_USER_ID)
-             and r.get("timestamp", "") > last_our_ts]
-    if later:
-        latest = max(later, key=lambda r: r.get("timestamp", ""))
-        return "rally", (latest.get("text") or ""), latest.get("id", c["id"]), latest.get("username")
-    return "handled", None, None, None
 
 
 # ---- 処理済みコメントの状態管理（review通知の重複防止） ----
@@ -345,7 +331,7 @@ LINE_TO = os.environ.get("LINE_TO_USER_ID", "")
 
 def notify_review(item: dict):
     """review階層の下書きをLINE Messaging APIでpush。未設定ならコンソール出力のみ。"""
-    msg = (f"🍶 レビュー待ちコメント [{item['label']}/{item['status']}]\n"
+    msg = (f"🍶 レビュー待ちコメント [{item['label']}]\n"
            f"投稿: {item['tag']}\n"
            f"👤 @{item['username']}\n"
            f"💬 {item['comment']}\n\n"
@@ -373,10 +359,11 @@ def main():
     index = load_index()
     state = load_state()
     print(f"[start] index={len(index)}件, lookback={LOOKBACK}, dry_run={DRY_RUN}, "
-          f"LINE={'on' if (LINE_TOKEN and LINE_TO) else 'off'}")
+          f"LINE={'on' if (LINE_TOKEN and LINE_TO) else 'off'}, "
+          f"reply_after={REPLY_AFTER or '(なし)'}, skip_if_replied={SKIP_IF_REPLIED}")
 
     media = fetch_recent_media()
-    auto_posted = review_queued = skipped = 0
+    auto_posted = review_queued = skipped = backlog = 0
 
     for m in media:
         entry, how = match_post(m.get("caption", ""), index)
@@ -384,16 +371,26 @@ def main():
         tag = f"{entry['theme']}/{how}" if entry else f"未照合/{how}"
 
         for c in fetch_comments(m["id"]):
-            if str(c.get("from", {}).get("id")) == str(IG_USER_ID):
+            cid = c["id"]
+            frm = c.get("from") or {}
+            # 自店アカウント自身のコメントは対象外（トップコメントの from は取得可）
+            if str(frm.get("id")) == str(IG_USER_ID):
                 continue
-            status, text, cid, username = analyze_thread(c)
-            if status == "handled":
+            if cid in state:
                 continue
-            text = (text or "").strip()
-            if not text or cid in state:
+            # 公開時点より前の既存コメント（バックログ）は無視
+            if REPLY_AFTER and (c.get("timestamp", "") <= REPLY_AFTER):
+                backlog += 1
                 continue
+            # 既に返信が付いているコメントは手動対応済みとみなしスキップ（二重返信防止）
+            if SKIP_IF_REPLIED and c.get("replies", {}).get("data"):
+                continue
+            text = (c.get("text") or "").strip()
+            if not text:
+                continue
+            username = frm.get("username") or "?"
 
-            res = analyze_comment(text, context, is_rally=(status == "rally"))
+            res = analyze_comment(text, context, is_rally=False)
             label = res.get("label", "不明")
             tier = res.get("tier", "review")
             reply = (res.get("reply") or "").strip()
@@ -405,16 +402,16 @@ def main():
                 state.add(cid)
                 continue
 
-            if tier == "auto" and status == "new":
+            if tier == "auto":
                 print(f"  [auto] ({tag}) [{label}] @{username}: {text[:24]} -> {reply}")
                 if not DRY_RUN:
                     api_post(f"{cid}/replies", {"message": reply})
                 auto_posted += 1
                 state.add(cid)
             else:
-                print(f"  [REVIEW] ({tag}) [{label}/{status}] @{username}: {text[:24]}")
+                print(f"  [REVIEW] ({tag}) [{label}] @{username}: {text[:24]}")
                 notify_review({
-                    "tag": tag, "label": label, "status": status, "username": username,
+                    "tag": tag, "label": label, "username": username,
                     "comment": text, "reply": reply, "reflection": reflection,
                     "permalink": m.get("permalink", ""),
                 })
@@ -423,7 +420,8 @@ def main():
 
     if not DRY_RUN:
         save_state(state)
-    print(f"[done] auto_posted={auto_posted}, review_queued={review_queued}, skipped={skipped}")
+    print(f"[done] auto_posted={auto_posted}, review_queued={review_queued}, "
+          f"skipped={skipped}, backlog_ignored={backlog}")
 
 
 if __name__ == "__main__":

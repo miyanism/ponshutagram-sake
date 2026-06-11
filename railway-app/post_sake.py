@@ -31,12 +31,25 @@ RAW_BASE    = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{BRANCH}"
 
 # ── Google スプレッドシート ───────────────────────────
 def to_direct_image_url(url):
-    """Google DriveのビューURLを直接画像URLに変換する"""
+    """Google DriveのビューURLを直接画像URLに変換する。
+    thumbnail形式は uc?export=view と違い確認ページを挟まず実画像バイトを返すため確実。"""
     import re
-    m = re.search(r"/file/d/([^/]+)", url)
+    m = re.search(r"/file/d/([^/]+)", url) or re.search(r"[?&]id=([^&]+)", url)
     if m:
-        return f"https://drive.google.com/uc?export=view&id={m.group(1)}"
+        return f"https://drive.google.com/thumbnail?id={m.group(1)}&sz=w2048"
     return url
+
+
+def image_is_valid(url):
+    """GMBが受け付ける画像か事前検証する（実画像で10KB以上か）。
+    Driveの非公開ファイル等はHTML(確認ページ)を返すため、それを弾く。"""
+    try:
+        r = requests.get(url, timeout=30)
+        ct = r.headers.get("Content-Type", "")
+        return r.status_code == 200 and ct.startswith("image/") and len(r.content) >= 10240
+    except Exception as e:
+        print(f"[WARN] 画像取得失敗: {e}")
+        return False
 
 
 def fetch_sake_list_from_sheets():
@@ -146,29 +159,53 @@ def main():
         print("全銘柄の投稿が完了しています。sake_state.jsonをリセットしてください。")
         sys.exit(0)
 
-    sake = sake_list[idx]
-    image_url = sake["image_url"]
-    print(f"銘柄: {sake['name']}  画像URL: {image_url}")
-
-    # GMB 投稿
     access_token = get_access_token()
-    result = post_to_gmb(access_token, sake, image_url)
-    print(f"投稿完了: {result.get('name', result)}")
 
-    # 状態更新（GitHubにコミット）
-    state["current_index"] = idx + 1
-    state.setdefault("history", []).append({
-        "index": idx,
-        "name":  sake["name"],
-        "posted_at": datetime.now().isoformat(),
-    })
+    # 画像が不正な銘柄はスキップして次へ進む（1枚の不良で全体を止めない）
+    skipped = []
+    while idx < len(sake_list):
+        sake = sake_list[idx]
+        image_url = sake["image_url"]
+        print(f"銘柄[{idx}]: {sake['name']}  画像URL: {image_url}")
+
+        if not image_is_valid(image_url):
+            print(f"[SKIP] 画像が無効（非公開/小さすぎ等）のためスキップ: {sake['name']}")
+            skipped.append({"index": idx, "name": sake["name"], "reason": "invalid_image"})
+            idx += 1
+            continue
+
+        # GMB 投稿
+        result = post_to_gmb(access_token, sake, image_url)
+        print(f"投稿完了: {result.get('name', result)}")
+
+        # 状態更新（GitHubにコミット）
+        state["current_index"] = idx + 1
+        state.setdefault("history", []).append({
+            "index": idx,
+            "name":  sake["name"],
+            "posted_at": datetime.now().isoformat(),
+            "skipped": skipped,
+        })
+        gh_put_json(
+            "sake_state.json",
+            state,
+            state_sha,
+            f"Auto post #{idx + 1}: {sake['name']}",
+        )
+        print(f"sake_state.json を更新しました (index → {idx + 1})")
+        if skipped:
+            print(f"※ 今回スキップした銘柄: {[s['name'] for s in skipped]}")
+        return
+
+    # ループを抜けた = 残り全てが無効画像だった
+    print(f"[完了] 投稿可能な銘柄がありませんでした。スキップ: {[s['name'] for s in skipped]}")
+    state["current_index"] = idx
     gh_put_json(
         "sake_state.json",
         state,
         state_sha,
-        f"Auto post #{idx + 1}: {sake['name']}",
+        f"Skip invalid images up to index {idx}",
     )
-    print(f"sake_state.json を更新しました (index {idx} → {idx + 1})")
 
 
 if __name__ == "__main__":

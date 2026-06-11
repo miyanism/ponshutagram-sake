@@ -1,5 +1,5 @@
 {
-  "current_index": 7,
+  "current_index": 9,
   "history": [
     {
       "index": 0,
@@ -35,6 +35,18 @@
       "index": 6,
       "name": "産土 穂増 六農醸",
       "posted_at": "2026-06-10T06:00:21.163161"
+    },
+    {
+      "index": 8,
+      "name": "木陰の魚",
+      "posted_at": "2026-06-11T15:51:22.591988",
+      "skipped": [
+        {
+          "index": 7,
+          "name": "九頭竜 貴醸酒",
+          "reason": "invalid_image"
+        }
+      ]
     }
   ]
 }

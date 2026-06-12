@@ -22,10 +22,12 @@ Instagram Graph API で公式返信する。
 import os
 import re
 import sys
+import time
 import json
 import difflib
 import urllib.parse
 import urllib.request
+import urllib.error
 
 import anthropic
 
@@ -105,12 +107,60 @@ SYSTEM_PROMPT = """あなたは日本酒バー「ポン酒タグラム The Bar�
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 
+class IGAuthError(Exception):
+    """トークン期限切れ・権限喪失など、人手対応が必要な恒久エラー。"""
+
+
+def _is_auth_error(body: str) -> bool:
+    """Meta のエラー本文がトークン/認可系（code 190 等）かを判定。"""
+    low = (body or "").lower()
+    return ('"code": 190' in low or '"code":190' in low
+            or "oauthexception" in low or "access token" in low
+            or "session has been invalidated" in low or "expired" in low)
+
+
+def _api_call(opener, what: str, retries: int = 4):
+    """Meta Graph API 呼び出しの共通リトライ。
+
+    一時的な失敗（5xx / 429 / 一部 400 / ネットワーク断）はバックオフ再試行する。
+    トークン/認可系エラー（code 190 等）は IGAuthError として即時送出し、
+    Railway 上でクラッシュ→通知させて人手のトークン再発行を促す。
+    Meta は同一エンドポイントに対し散発的に 400/500 を返すため（2026-06-12 のcrash連発の実因）、
+    数回の再試行でcronジョブ全体の落下と誤クラッシュ通知を防ぐ。
+    """
+    last = None
+    for i in range(retries):
+        try:
+            with opener() as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8", "replace")[:500]
+            except Exception:
+                pass
+            if _is_auth_error(body):
+                raise IGAuthError(f"{what}: HTTP {e.code} 認可エラー（要トークン再発行） {body}") from e
+            last = e
+            transient = e.code in (429, 500, 502, 503, 504) or e.code == 400
+            if not transient or i == retries - 1:
+                raise
+            print(f"  [retry {i+1}/{retries}] {what}: HTTP {e.code} {body[:120]}")
+        except (urllib.error.URLError, TimeoutError) as e:
+            last = e
+            if i == retries - 1:
+                raise
+            print(f"  [retry {i+1}/{retries}] {what}: {type(e).__name__} {e}")
+        time.sleep(2 * (i + 1))  # 2s,4s,6s の線形バックオフ
+    if last:
+        raise last
+
+
 def api_get(path: str, params: dict) -> dict:
     params = dict(params)
     params["access_token"] = TOKEN
     url = f"{GRAPH}/{path}?{urllib.parse.urlencode(params)}"
-    with urllib.request.urlopen(url, timeout=30) as r:
-        return json.load(r)
+    return _api_call(lambda: urllib.request.urlopen(url, timeout=30), f"GET {path}")
 
 
 def api_post(path: str, data: dict) -> dict:
@@ -118,8 +168,7 @@ def api_post(path: str, data: dict) -> dict:
     data["access_token"] = TOKEN
     body = urllib.parse.urlencode(data).encode()
     req = urllib.request.Request(f"{GRAPH}/{path}", data=body, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    return _api_call(lambda: urllib.request.urlopen(req, timeout=30), f"POST {path}")
 
 
 def load_index() -> list:
@@ -401,7 +450,18 @@ def main():
           f"LINE={'on' if (LINE_TOKEN and LINE_TO) else 'off'}, "
           f"reply_after={REPLY_AFTER or '(なし)'}, skip_if_replied={SKIP_IF_REPLIED}")
 
-    media = fetch_recent_media()
+    try:
+        media = fetch_recent_media()
+    except IGAuthError as e:
+        # トークン失効等の恒久エラーは黙殺しない。クラッシュさせて通知を出す。
+        print(f"[FATAL] Instagram認可エラー: {e}")
+        sys.exit(1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+        # 再試行しても直らなかった一時的なMeta API不調。次のcronで自動再試行されるので
+        # クラッシュ通知を出さず正常終了する（2026-06-12のcrash連発対策）。
+        print(f"[warn] メディア取得が一時失敗（次回cronで再試行）: {e}")
+        return
+
     auto_posted = review_queued = skipped = backlog = 0
 
     for m in media:

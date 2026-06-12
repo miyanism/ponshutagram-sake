@@ -1,5 +1,5 @@
 {
-  "current_index": 9,
+  "current_index": 10,
   "history": [
     {
       "index": 0,
@@ -47,6 +47,12 @@
           "reason": "invalid_image"
         }
       ]
+    },
+    {
+      "index": 9,
+      "name": "黒龍 大吟醸 龍 50周年記念",
+      "posted_at": "2026-06-12T06:00:45.431293",
+      "skipped": []
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "current_index": 14,
+  "current_index": 15,
   "history": [
     {
       "index": 0,
@@ -76,6 +76,12 @@
       "index": 13,
       "name": "而今 特純無濾過生原酒",
       "posted_at": "2026-06-14T06:00:58.853922",
+      "skipped": []
+    },
+    {
+      "index": 14,
+      "name": "而今 NABARI 純米大吟醸",
+      "posted_at": "2026-06-14T11:00:25.130014",
       "skipped": []
     }
   ]

@@ -9,3 +9,18 @@ get_next_sake.py
 next_sake.json
 update_sake_state.py
 3月銘柄/
+
+# --- 2026-06-14 整理: 事故的な git add -A の再発防止 ---
+# 秘密・トークン（どのフォルダでも効くようパス無し指定）
+.env
+.env.local
+.deploy.env
+token_sheets.json
+railway-app/test_post.py
+# 月別メディアの取り込みフォルダ（3月銘柄/ と同じ運用）
+5月中部エリア/
+# Python/自動化の生成物・ローカルツール設定
+__pycache__/
+*.pyc
+.tiktok_profile/
+.claude/

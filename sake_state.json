@@ -1,5 +1,5 @@
 {
-  "current_index": 13,
+  "current_index": 14,
   "history": [
     {
       "index": 0,
@@ -70,6 +70,12 @@
       "index": 12,
       "name": "而今 特純無濾過生原酒",
       "posted_at": "2026-06-13T11:02:35.709937",
+      "skipped": []
+    },
+    {
+      "index": 13,
+      "name": "而今 特純無濾過生原酒",
+      "posted_at": "2026-06-14T06:00:58.853922",
       "skipped": []
     }
   ]

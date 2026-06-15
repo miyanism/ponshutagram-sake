@@ -1,5 +1,5 @@
 {
-  "current_index": 15,
+  "current_index": 16,
   "history": [
     {
       "index": 0,
@@ -82,6 +82,12 @@
       "index": 14,
       "name": "而今 NABARI 純米大吟醸",
       "posted_at": "2026-06-14T11:00:25.130014",
+      "skipped": []
+    },
+    {
+      "index": 15,
+      "name": "羽根屋 大吟醸 袋吊り斗瓶囲い",
+      "posted_at": "2026-06-15T06:03:04.274982",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 16,
+  "current_index": 18,
   "history": [
     {
       "index": 0,
@@ -89,6 +89,18 @@
       "name": "羽根屋 大吟醸 袋吊り斗瓶囲い",
       "posted_at": "2026-06-15T06:03:04.274982",
       "skipped": []
+    },
+    {
+      "index": 17,
+      "name": "水芭蕉ボトル",
+      "posted_at": "2026-06-15T11:02:33.548142",
+      "skipped": [
+        {
+          "index": 16,
+          "name": "松みどり 純米吟醸 S.tokyo",
+          "reason": "invalid_image"
+        }
+      ]
     }
   ]
 }

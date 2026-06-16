@@ -1,5 +1,5 @@
 {
-  "current_index": 18,
+  "current_index": 20,
   "history": [
     {
       "index": 0,
@@ -98,6 +98,18 @@
         {
           "index": 16,
           "name": "松みどり 純米吟醸 S.tokyo",
+          "reason": "invalid_image"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "name": "アイスブレーカー",
+      "posted_at": "2026-06-16T06:04:00.072903",
+      "skipped": [
+        {
+          "index": 18,
+          "name": "【限定】ゆきの美人 純米大吟醸辛口",
           "reason": "invalid_image"
         }
       ]

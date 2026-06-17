@@ -1,5 +1,5 @@
 {
-  "current_index": 22,
+  "current_index": 23,
   "history": [
     {
       "index": 0,
@@ -124,6 +124,12 @@
       "index": 21,
       "name": "十石 純米大吟醸 原石 No.1 ダイアモンド",
       "posted_at": "2026-06-17T06:04:30.599140",
+      "skipped": []
+    },
+    {
+      "index": 22,
+      "name": "徳次郎 夏純米",
+      "posted_at": "2026-06-17T11:03:38.935905",
       "skipped": []
     }
   ]

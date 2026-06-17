@@ -1,5 +1,5 @@
 {
-  "current_index": 21,
+  "current_index": 22,
   "history": [
     {
       "index": 0,
@@ -118,6 +118,12 @@
       "index": 20,
       "name": "澤屋まつもと Ultra ウルトラ大吟",
       "posted_at": "2026-06-16T11:02:56.255969",
+      "skipped": []
+    },
+    {
+      "index": 21,
+      "name": "十石 純米大吟醸 原石 No.1 ダイアモンド",
+      "posted_at": "2026-06-17T06:04:30.599140",
       "skipped": []
     }
   ]

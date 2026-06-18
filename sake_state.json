@@ -1,5 +1,5 @@
 {
-  "current_index": 23,
+  "current_index": 24,
   "history": [
     {
       "index": 0,
@@ -130,6 +130,12 @@
       "index": 22,
       "name": "徳次郎 夏純米",
       "posted_at": "2026-06-17T11:03:38.935905",
+      "skipped": []
+    },
+    {
+      "index": 23,
+      "name": "日日 愛山",
+      "posted_at": "2026-06-18T06:02:17.752700",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 26,
+  "current_index": 27,
   "history": [
     {
       "index": 0,
@@ -148,6 +148,12 @@
       "index": 25,
       "name": "日日 愛山",
       "posted_at": "2026-06-19T06:04:27.956008",
+      "skipped": []
+    },
+    {
+      "index": 26,
+      "name": "日日 秋津山田錦",
+      "posted_at": "2026-06-19T11:00:28.116022",
       "skipped": []
     }
   ]

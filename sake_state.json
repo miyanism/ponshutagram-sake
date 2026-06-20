@@ -1,5 +1,5 @@
 {
-  "current_index": 27,
+  "current_index": 28,
   "history": [
     {
       "index": 0,
@@ -154,6 +154,12 @@
       "index": 26,
       "name": "日日 秋津山田錦",
       "posted_at": "2026-06-19T11:00:28.116022",
+      "skipped": []
+    },
+    {
+      "index": 27,
+      "name": "日日 玉栄",
+      "posted_at": "2026-06-20T06:00:28.353506",
       "skipped": []
     }
   ]

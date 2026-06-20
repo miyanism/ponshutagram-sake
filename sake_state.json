@@ -1,5 +1,5 @@
 {
-  "current_index": 28,
+  "current_index": 29,
   "history": [
     {
       "index": 0,
@@ -160,6 +160,12 @@
       "index": 27,
       "name": "日日 玉栄",
       "posted_at": "2026-06-20T06:00:28.353506",
+      "skipped": []
+    },
+    {
+      "index": 28,
+      "name": "日日 山田錦",
+      "posted_at": "2026-06-20T11:01:26.204327",
       "skipped": []
     }
   ]

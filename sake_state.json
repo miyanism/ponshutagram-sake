@@ -1,5 +1,5 @@
 {
-  "current_index": 30,
+  "current_index": 31,
   "history": [
     {
       "index": 0,
@@ -172,6 +172,12 @@
       "index": 29,
       "name": "笑四季 インテンス612 桃 おりがらみ",
       "posted_at": "2026-06-21T06:01:23.892443",
+      "skipped": []
+    },
+    {
+      "index": 30,
+      "name": "笑四季 クィーンオブザナイト",
+      "posted_at": "2026-06-21T11:04:52.335531",
       "skipped": []
     }
   ]

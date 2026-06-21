@@ -1,5 +1,5 @@
 {
-  "current_index": 29,
+  "current_index": 30,
   "history": [
     {
       "index": 0,
@@ -166,6 +166,12 @@
       "index": 28,
       "name": "日日 山田錦",
       "posted_at": "2026-06-20T11:01:26.204327",
+      "skipped": []
+    },
+    {
+      "index": 29,
+      "name": "笑四季 インテンス612 桃 おりがらみ",
+      "posted_at": "2026-06-21T06:01:23.892443",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 31,
+  "current_index": 32,
   "history": [
     {
       "index": 0,
@@ -178,6 +178,12 @@
       "index": 30,
       "name": "笑四季 クィーンオブザナイト",
       "posted_at": "2026-06-21T11:04:52.335531",
+      "skipped": []
+    },
+    {
+      "index": 31,
+      "name": "北島 ひっぱりだこ 超辛口純米吟醸",
+      "posted_at": "2026-06-22T06:03:57.332094",
       "skipped": []
     }
   ]

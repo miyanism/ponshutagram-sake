@@ -1,5 +1,5 @@
 {
-  "current_index": 32,
+  "current_index": 33,
   "history": [
     {
       "index": 0,
@@ -184,6 +184,12 @@
       "index": 31,
       "name": "北島 ひっぱりだこ 超辛口純米吟醸",
       "posted_at": "2026-06-22T06:03:57.332094",
+      "skipped": []
+    },
+    {
+      "index": 32,
+      "name": "喜楽長 びわ湖の夏 純米酒",
+      "posted_at": "2026-06-22T11:04:35.572726",
       "skipped": []
     }
   ]

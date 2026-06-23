@@ -35,9 +35,9 @@ import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Windows コンソールでの絵文字出力対策（ローカルテスト用）
+# 絵文字出力対策＋行バッファリング（Railwayログに即時反映させる）
 try:
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
 except Exception:
     pass
 

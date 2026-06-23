@@ -1,5 +1,5 @@
 {
-  "current_index": 33,
+  "current_index": 34,
   "history": [
     {
       "index": 0,
@@ -190,6 +190,12 @@
       "index": 32,
       "name": "喜楽長 びわ湖の夏 純米酒",
       "posted_at": "2026-06-22T11:04:35.572726",
+      "skipped": []
+    },
+    {
+      "index": 33,
+      "name": "浪乃音 夏吟醸酒 風 生酒",
+      "posted_at": "2026-06-23T06:02:16.534218",
       "skipped": []
     }
   ]

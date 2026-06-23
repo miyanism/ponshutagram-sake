@@ -1,5 +1,5 @@
 {
-  "current_index": 34,
+  "current_index": 35,
   "history": [
     {
       "index": 0,
@@ -196,6 +196,12 @@
       "index": 33,
       "name": "浪乃音 夏吟醸酒 風 生酒",
       "posted_at": "2026-06-23T06:02:16.534218",
+      "skipped": []
+    },
+    {
+      "index": 34,
+      "name": "雑賀 純米吟醸 辛口 生詰め",
+      "posted_at": "2026-06-23T11:00:26.539106",
       "skipped": []
     }
   ]

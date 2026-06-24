@@ -1,5 +1,5 @@
 {
-  "current_index": 36,
+  "current_index": 37,
   "history": [
     {
       "index": 0,
@@ -208,6 +208,12 @@
       "index": 35,
       "name": "澤屋まつもと Ultra ウルトラ大吟",
       "posted_at": "2026-06-24T06:04:47.592130",
+      "skipped": []
+    },
+    {
+      "index": 36,
+      "name": "作 槐山一滴水 純米大吟醸",
+      "posted_at": "2026-06-24T11:02:26.442289",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 35,
+  "current_index": 36,
   "history": [
     {
       "index": 0,
@@ -202,6 +202,12 @@
       "index": 34,
       "name": "雑賀 純米吟醸 辛口 生詰め",
       "posted_at": "2026-06-23T11:00:26.539106",
+      "skipped": []
+    },
+    {
+      "index": 35,
+      "name": "澤屋まつもと Ultra ウルトラ大吟",
+      "posted_at": "2026-06-24T06:04:47.592130",
       "skipped": []
     }
   ]

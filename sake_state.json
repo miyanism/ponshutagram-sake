@@ -1,5 +1,5 @@
 {
-  "current_index": 37,
+  "current_index": 38,
   "history": [
     {
       "index": 0,
@@ -214,6 +214,12 @@
       "index": 36,
       "name": "作 槐山一滴水 純米大吟醸",
       "posted_at": "2026-06-24T11:02:26.442289",
+      "skipped": []
+    },
+    {
+      "index": 37,
+      "name": "作 雅乃智 中取り 純米大吟醸",
+      "posted_at": "2026-06-25T06:00:53.389464",
       "skipped": []
     }
   ]

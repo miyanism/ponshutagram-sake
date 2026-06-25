@@ -1,5 +1,5 @@
 {
-  "current_index": 38,
+  "current_index": 39,
   "history": [
     {
       "index": 0,
@@ -220,6 +220,12 @@
       "index": 37,
       "name": "作 雅乃智 中取り 純米大吟醸",
       "posted_at": "2026-06-25T06:00:53.389464",
+      "skipped": []
+    },
+    {
+      "index": 38,
+      "name": "而今 千本錦",
+      "posted_at": "2026-06-25T11:01:01.045902",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 39,
+  "current_index": 40,
   "history": [
     {
       "index": 0,
@@ -226,6 +226,12 @@
       "index": 38,
       "name": "而今 千本錦",
       "posted_at": "2026-06-25T11:01:01.045902",
+      "skipped": []
+    },
+    {
+      "index": 39,
+      "name": "十石 純米大吟醸 原石 No.1 ダイアモンド",
+      "posted_at": "2026-06-26T06:01:09.419942",
       "skipped": []
     }
   ]

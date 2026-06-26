@@ -1,5 +1,5 @@
 {
-  "current_index": 40,
+  "current_index": 41,
   "history": [
     {
       "index": 0,
@@ -232,6 +232,12 @@
       "index": 39,
       "name": "十石 純米大吟醸 原石 No.1 ダイアモンド",
       "posted_at": "2026-06-26T06:01:09.419942",
+      "skipped": []
+    },
+    {
+      "index": 40,
+      "name": "純青 播州雄町 生もと純米吟醸",
+      "posted_at": "2026-06-26T11:01:02.127574",
       "skipped": []
     }
   ]

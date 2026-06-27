@@ -1,5 +1,5 @@
 {
-  "current_index": 42,
+  "current_index": 43,
   "history": [
     {
       "index": 0,
@@ -244,6 +244,12 @@
       "index": 41,
       "name": "仙介 純米ROCK 無濾過生酒原酒",
       "posted_at": "2026-06-27T06:04:43.881213",
+      "skipped": []
+    },
+    {
+      "index": 42,
+      "name": "仙介 特別純米 白麹 無濾過生酒原酒",
+      "posted_at": "2026-06-27T11:01:44.502657",
       "skipped": []
     }
   ]

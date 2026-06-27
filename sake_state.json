@@ -1,5 +1,5 @@
 {
-  "current_index": 41,
+  "current_index": 42,
   "history": [
     {
       "index": 0,
@@ -238,6 +238,12 @@
       "index": 40,
       "name": "純青 播州雄町 生もと純米吟醸",
       "posted_at": "2026-06-26T11:01:02.127574",
+      "skipped": []
+    },
+    {
+      "index": 41,
+      "name": "仙介 純米ROCK 無濾過生酒原酒",
+      "posted_at": "2026-06-27T06:04:43.881213",
       "skipped": []
     }
   ]

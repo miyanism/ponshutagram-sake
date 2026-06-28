@@ -1,5 +1,5 @@
 {
-  "current_index": 44,
+  "current_index": 45,
   "history": [
     {
       "index": 0,
@@ -256,6 +256,12 @@
       "index": 43,
       "name": "瀧自慢 はやせ 辛口純米酒",
       "posted_at": "2026-06-28T06:02:06.493359",
+      "skipped": []
+    },
+    {
+      "index": 44,
+      "name": "徳次郎 夏純米",
+      "posted_at": "2026-06-28T11:03:38.384722",
       "skipped": []
     }
   ]

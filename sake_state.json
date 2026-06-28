@@ -1,5 +1,5 @@
 {
-  "current_index": 43,
+  "current_index": 44,
   "history": [
     {
       "index": 0,
@@ -250,6 +250,12 @@
       "index": 42,
       "name": "仙介 特別純米 白麹 無濾過生酒原酒",
       "posted_at": "2026-06-27T11:01:44.502657",
+      "skipped": []
+    },
+    {
+      "index": 43,
+      "name": "瀧自慢 はやせ 辛口純米酒",
+      "posted_at": "2026-06-28T06:02:06.493359",
       "skipped": []
     }
   ]

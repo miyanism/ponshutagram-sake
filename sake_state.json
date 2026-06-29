@@ -1,5 +1,5 @@
 {
-  "current_index": 45,
+  "current_index": 46,
   "history": [
     {
       "index": 0,
@@ -262,6 +262,12 @@
       "index": 44,
       "name": "徳次郎 夏純米",
       "posted_at": "2026-06-28T11:03:38.384722",
+      "skipped": []
+    },
+    {
+      "index": 45,
+      "name": "浪乃音 夏吟醸酒 風 生酒",
+      "posted_at": "2026-06-29T06:03:18.450574",
       "skipped": []
     }
   ]

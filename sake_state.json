@@ -1,5 +1,5 @@
 {
-  "current_index": 50,
+  "current_index": 51,
   "history": [
     {
       "index": 0,
@@ -292,6 +292,12 @@
       "index": 49,
       "name": "日日 山田錦",
       "posted_at": "2026-07-01T06:02:20.956286",
+      "skipped": []
+    },
+    {
+      "index": 50,
+      "name": "中島屋 EverGreen",
+      "posted_at": "2026-07-01T11:02:46.051661",
       "skipped": []
     }
   ]

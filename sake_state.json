@@ -1,5 +1,5 @@
 {
-  "current_index": 52,
+  "current_index": 53,
   "history": [
     {
       "index": 0,
@@ -304,6 +304,12 @@
       "index": 51,
       "name": "七冠馬 純米吟醸 夏涼みセブン",
       "posted_at": "2026-07-02T06:04:03.879678",
+      "skipped": []
+    },
+    {
+      "index": 52,
+      "name": "華鳩 貴醸酒 +爽アイス",
+      "posted_at": "2026-07-02T11:04:37.462899",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 51,
+  "current_index": 52,
   "history": [
     {
       "index": 0,
@@ -298,6 +298,12 @@
       "index": 50,
       "name": "中島屋 EverGreen",
       "posted_at": "2026-07-01T11:02:46.051661",
+      "skipped": []
+    },
+    {
+      "index": 51,
+      "name": "七冠馬 純米吟醸 夏涼みセブン",
+      "posted_at": "2026-07-02T06:04:03.879678",
       "skipped": []
     }
   ]

@@ -1,5 +1,5 @@
 {
-  "current_index": 53,
+  "current_index": 54,
   "history": [
     {
       "index": 0,
@@ -310,6 +310,12 @@
       "index": 52,
       "name": "華鳩 貴醸酒 +爽アイス",
       "posted_at": "2026-07-02T11:04:37.462899",
+      "skipped": []
+    },
+    {
+      "index": 53,
+      "name": "原田 特別純米",
+      "posted_at": "2026-07-03T06:01:03.977115",
       "skipped": []
     }
   ]

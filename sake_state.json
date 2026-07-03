@@ -1,5 +1,5 @@
 {
-  "current_index": 54,
+  "current_index": 55,
   "history": [
     {
       "index": 0,
@@ -316,6 +316,12 @@
       "index": 53,
       "name": "原田 特別純米",
       "posted_at": "2026-07-03T06:01:03.977115",
+      "skipped": []
+    },
+    {
+      "index": 54,
+      "name": "原田 特別純米",
+      "posted_at": "2026-07-03T11:01:59.833805",
       "skipped": []
     }
   ]

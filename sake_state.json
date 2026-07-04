@@ -1,5 +1,5 @@
 {
-  "current_index": 56,
+  "current_index": 57,
   "history": [
     {
       "index": 0,
@@ -328,6 +328,12 @@
       "index": 55,
       "name": "日下無双 純米おりがらみ 生酒",
       "posted_at": "2026-07-04T06:04:01.453732",
+      "skipped": []
+    },
+    {
+      "index": 56,
+      "name": "扶桑鶴 純米にごり酒",
+      "posted_at": "2026-07-04T11:02:46.090522",
       "skipped": []
     }
   ]

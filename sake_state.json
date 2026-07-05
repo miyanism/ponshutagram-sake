@@ -1,5 +1,5 @@
 {
-  "current_index": 58,
+  "current_index": 59,
   "history": [
     {
       "index": 0,
@@ -340,6 +340,12 @@
       "index": 57,
       "name": "一代弥山 純米吟醸 原酒",
       "posted_at": "2026-07-05T06:05:00.795835",
+      "skipped": []
+    },
+    {
+      "index": 58,
+      "name": "山猿 純米吟醸 限定壺生",
+      "posted_at": "2026-07-05T11:02:53.821735",
       "skipped": []
     }
   ]

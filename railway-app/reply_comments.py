@@ -317,12 +317,19 @@ ANALYZE_INSTRUCTION = """上記の投稿文脈・店舗情報・誤情報訂正�
 {"label":"...","tier":"auto|review|skip","reply":"...","reflection":"..."}"""
 
 
-def analyze_comment(comment_text: str, context: str, is_rally: bool) -> dict:
+def analyze_comment(comment_text: str, context: str, is_rally: bool,
+                    is_followup: bool = False) -> dict:
     rally_note = ""
     if is_rally:
         rally_note = ("\n\n※これは店の返信への相手の『再返信(ラリー)』です。"
                       "時系列を踏まえ、相手が軟化/合流/収束していないか見極める。"
                       "必ず tier=review にする。")
+    if is_followup:
+        rally_note += ("\n\n※この相手には、この投稿で既にこちらから一度返信済みです。"
+                       "このコメントが返信へのお礼・相づち・社交辞令の締めなら、"
+                       "お礼のラリー（お辞儀の応酬）を防ぐため tier=skip にしてください。"
+                       "返信しないのが礼儀として自然です。"
+                       "新しい質問・新しい論点・批判が含まれる場合のみ、通常どおり判定してください。")
     msg = client.messages.create(
         model=MODEL,
         max_tokens=500,
@@ -405,19 +412,24 @@ def fetch_comments(media_id: str) -> list:
 STATE_PATH = os.path.join(os.environ.get("STATE_DIR", os.path.dirname(__file__)), "comment_state.json")
 
 
-def load_state() -> set:
+def load_state() -> dict:
+    """state = {"handled": 処理済みコメントid, "replied": 返信済み "media_id:user_id"}
+    replied は「同じ投稿で同じ人へ二度目のお礼返信をしない」ラリー締め用。"""
     if os.path.exists(STATE_PATH):
         with open(STATE_PATH, encoding="utf-8") as f:
-            return set(json.load(f).get("handled", []))
-    return set()
+            d = json.load(f)
+        return {"handled": set(d.get("handled", [])),
+                "replied": set(d.get("replied", []))}
+    return {"handled": set(), "replied": set()}
 
 
-def save_state(handled: set):
+def save_state(state: dict):
     os.makedirs(os.path.dirname(STATE_PATH) or ".", exist_ok=True)
     # 肥大化防止: 直近5000件だけ保持
-    trimmed = sorted(handled)[-5000:]
+    out = {"handled": sorted(state["handled"])[-5000:],
+           "replied": sorted(state["replied"])[-5000:]}
     with open(STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump({"handled": trimmed}, f, ensure_ascii=False, indent=2)
+        json.dump(out, f, ensure_ascii=False, indent=2)
 
 
 # ---- レビュー待ちをLINEへ通知 ----
@@ -454,6 +466,7 @@ def main():
 
     index = load_index()
     state = load_state()
+    handled, replied = state["handled"], state["replied"]
     print(f"[start] index={len(index)}件, lookback={LOOKBACK}, dry_run={DRY_RUN}, "
           f"LINE={'on' if (LINE_TOKEN and LINE_TO) else 'off'}, "
           f"reply_after={REPLY_AFTER or '(なし)'}, skip_if_replied={SKIP_IF_REPLIED}")
@@ -483,7 +496,7 @@ def main():
             # 自店アカウント自身のコメントは対象外（トップコメントの from は取得可）
             if str(frm.get("id")) == str(IG_USER_ID):
                 continue
-            if cid in state:
+            if cid in handled:
                 continue
             # 公開時点より前の既存コメント（バックログ）は無視
             if REPLY_AFTER and (c.get("timestamp", "") <= REPLY_AFTER):
@@ -497,16 +510,27 @@ def main():
                 continue
             username = frm.get("username") or "?"
 
-            res = analyze_comment(text, context, is_rally=False)
+            # ラリー締め: この投稿でこの人に返信済みなら followup として扱う
+            replied_key = f"{m['id']}:{frm.get('id')}"
+            is_followup = replied_key in replied
+
+            res = analyze_comment(text, context, is_rally=False, is_followup=is_followup)
             label = res.get("label", "不明")
             tier = res.get("tier", "review")
             reply = (res.get("reply") or "").strip()
             reflection = res.get("reflection", "")
 
+            # 返信済みの相手からの称賛・お礼は、AI判定に関わらず締める（お辞儀の応酬防止）
+            if is_followup and label == "称賛":
+                print(f"  [rally-close] ({tag}) @{username}: {text[:30]}")
+                skipped += 1
+                handled.add(cid)
+                continue
+
             if tier == "skip" or not reply:
                 print(f"  [skip] ({tag}) [{label}] @{username}: {text[:30]}")
                 skipped += 1
-                state.add(cid)
+                handled.add(cid)
                 continue
 
             if tier == "auto":
@@ -527,14 +551,15 @@ def main():
                         "permalink": m.get("permalink", ""),
                     })
                     review_queued += 1
-                    state.add(cid)
+                    handled.add(cid)
                     continue
                 v_mark = "検証ok" if verdict == "ok" else "検証→修正"
                 print(f"  [auto/{v_mark}] ({tag}) [{label}] @{username}: {text[:20]} -> {final}")
                 if not DRY_RUN:
                     api_post(f"{cid}/replies", {"message": final})
                 auto_posted += 1
-                state.add(cid)
+                handled.add(cid)
+                replied.add(replied_key)  # ラリー締め用: この投稿×この人 に返信済み
             else:
                 print(f"  [REVIEW] ({tag}) [{label}] @{username}: {text[:24]}")
                 notify_review({
@@ -543,7 +568,7 @@ def main():
                     "permalink": m.get("permalink", ""),
                 })
                 review_queued += 1
-                state.add(cid)
+                handled.add(cid)
 
     if not DRY_RUN:
         save_state(state)

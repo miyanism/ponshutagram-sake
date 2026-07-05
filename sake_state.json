@@ -1,5 +1,5 @@
 {
-  "current_index": 57,
+  "current_index": 58,
   "history": [
     {
       "index": 0,
@@ -334,6 +334,12 @@
       "index": 56,
       "name": "扶桑鶴 純米にごり酒",
       "posted_at": "2026-07-04T11:02:46.090522",
+      "skipped": []
+    },
+    {
+      "index": 57,
+      "name": "一代弥山 純米吟醸 原酒",
+      "posted_at": "2026-07-05T06:05:00.795835",
       "skipped": []
     }
   ]

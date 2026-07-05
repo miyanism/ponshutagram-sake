@@ -26,6 +26,7 @@ LINE に「投稿タグ＋コメント」を送ると、IG自動返信とまっ�
 """
 import os
 import io
+import re
 import sys
 import json
 import hmac
@@ -62,7 +63,13 @@ HELP = (
     "・scenario/20260610_冷やの正体\n"
     "・20260610_冷やの正体\n\n"
     "1行で送るときは ｜ で区切ってもOK:\n"
-    "冷やの正体｜冷やで常温出てきたことないですよ"
+    "冷やの正体｜冷やで常温出てきたことないですよ\n\n"
+    "🔁 議論の続き（ラリー）は、やり取りを時系列で貼る:\n"
+    "獺祭第三号蔵\n"
+    "相手: そこに美味しさの追求は無いのですね\n"
+    "自分: 美味しさの追求って、どの段階の…\n"
+    "相手: 世界の棚ではなく…\n"
+    "→ 文脈を踏まえた次の返信案を返します。"
 )
 
 # ---- Webhook 再送（リトライ）対策の簡易メモ化 ----
@@ -135,6 +142,32 @@ _TIER_DISP = {
     "skip": "⚪ 返信不要",
 }
 
+# ラリー形式の行頭ロール（相手:／自分:／店:／客: 半角・全角コロン両対応）
+ROLE_RE = re.compile(r"^(相手|自分|店|客)\s*[:：]\s*(.*)$")
+
+
+def parse_thread(body: str):
+    """「相手:／自分:」形式のラリーを解析する。
+
+    行頭にロールが付いた行で発言を区切り、無印の行は直前の発言の続きとして結合。
+    「相手」「自分(店)」の両方が居て2発言以上あればラリーとみなし [(role, text), ...] を返す。
+    該当しなければ None（＝通常の単発コメント扱い）。
+    """
+    turns = []
+    cur = None
+    for ln in body.split("\n"):
+        m = ROLE_RE.match(ln.strip())
+        if m:
+            role = "自分" if m.group(1) in ("自分", "店") else "相手"
+            cur = [role, m.group(2).strip()]
+            turns.append(cur)
+        elif cur is not None and ln.strip():
+            cur[1] += "\n" + ln.strip()
+    roles = {r for r, _ in turns}
+    if len(turns) >= 2 and "自分" in roles and "相手" in roles:
+        return [(r, t) for r, t in turns]
+    return None
+
 
 def generate(text: str) -> str:
     tag, comment = parse_message(text)
@@ -146,7 +179,25 @@ def generate(text: str) -> str:
     context = eng.build_context(entry)
     theme_disp = entry["theme"] if entry else "未照合"
 
-    res = eng.analyze_comment(comment, context, is_rally=False)
+    # ラリー形式（相手:／自分:）なら、やり取り全体を文脈として渡す
+    turns = parse_thread(comment)
+    is_rally = turns is not None
+    if is_rally:
+        thread = "\n\n".join(
+            f"{'店(自分)' if r == '自分' else '相手'}: {t}" for r, t in turns)
+        comment_for_ai = (
+            "以下は、店の返信に対する相手との一連のやり取りです（時系列・上が古い）。\n"
+            "これまでの脈略を踏まえ、最後の相手コメントへの次の返信を作ってください。\n"
+            "既に譲った点を蒸し返さない・既に答えた論点を初見のように扱わない・"
+            "ラリーが平行線なら礼をもって締める判断も含めて。\n\n" + thread)
+        if turns[-1][0] != "相手":
+            comment_for_ai += "\n\n※注意: 最後の発言が店側です。相手の最新コメントの貼り忘れの可能性あり。"
+        latest = next((t for r, t in reversed(turns) if r == "相手"), comment)
+    else:
+        comment_for_ai = comment
+        latest = comment
+
+    res = eng.analyze_comment(comment_for_ai, context, is_rally=is_rally)
     label = res.get("label", "不明")
     tier = res.get("tier", "review")
     reply = (res.get("reply") or "").strip()
@@ -154,7 +205,7 @@ def generate(text: str) -> str:
 
     verify_note = ""
     if VERIFY_PASS and tier != "skip" and reply:
-        v = eng.verify_reply(comment, context, reply)
+        v = eng.verify_reply(comment_for_ai, context, reply)
         verdict = v.get("verdict", "escalate")
         if verdict == "ok":
             verify_note = "✅ 検証ok"
@@ -168,11 +219,13 @@ def generate(text: str) -> str:
         f"🍶 返信案 [{label}/{_TIER_DISP.get(tier, tier)}]",
         f"投稿: {theme_disp}（{how}）",
     ]
+    if is_rally:
+        lines.append(f"🔁 ラリー: {len(turns)}発言の文脈を踏まえて生成")
     if not entry:
         lines.append("※索引に無い投稿のため一般トーンで生成。caption_index更新を推奨。")
     lines += [
         "",
-        f"💬 {comment[:300]}",
+        f"💬 {latest[:300]}",
         "",
         "↩️",
         reply if reply else "（返信不要と判断）",

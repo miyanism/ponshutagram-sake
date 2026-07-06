@@ -1,5 +1,5 @@
 {
-  "current_index": 60,
+  "current_index": 61,
   "history": [
     {
       "index": 0,
@@ -352,6 +352,12 @@
       "index": 59,
       "name": "理可の実験 純米酒",
       "posted_at": "2026-07-06T06:02:23.692188",
+      "skipped": []
+    },
+    {
+      "index": 60,
+      "name": "ROOM 純米吟醸",
+      "posted_at": "2026-07-06T11:02:13.330796",
       "skipped": []
     }
   ]

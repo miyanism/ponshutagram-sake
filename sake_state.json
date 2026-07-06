@@ -1,5 +1,5 @@
 {
-  "current_index": 59,
+  "current_index": 60,
   "history": [
     {
       "index": 0,
@@ -346,6 +346,12 @@
       "index": 58,
       "name": "山猿 純米吟醸 限定壺生",
       "posted_at": "2026-07-05T11:02:53.821735",
+      "skipped": []
+    },
+    {
+      "index": 59,
+      "name": "理可の実験 純米酒",
+      "posted_at": "2026-07-06T06:02:23.692188",
       "skipped": []
     }
   ]

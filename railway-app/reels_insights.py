@@ -88,6 +88,14 @@ JST = datetime.timezone(datetime.timedelta(hours=9))
 SOURCE_TAG = re.compile(r"(short|scenario)/([^\s#、。,]+)")
 BARE_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
 
+# タグ無しで投稿済みのReelsの手動対応表（permalinkのショートコード → ラベル）。
+# キャプションが元原稿から大きくリライトされておりファジー照合が効かない（実測ratio 0.1台）ため固定で持つ。
+# タグ運用開始（2026-06）以降の投稿はタグで照合されるので、ここに足すのは過去分だけ。
+LABEL_OVERRIDES = {
+    "DZhh0RUT2Zq": "scenario/20260610_冷やの正体",   # 2026-06-13投稿
+    "DZPkux4Bunz": "scenario/20260428_おっちゃん酒",  # 2026-06-06投稿
+}
+
 
 class IGAuthError(Exception):
     """トークン期限切れ・権限喪失など、人手対応が必要な恒久エラー。"""
@@ -163,8 +171,11 @@ def fetch_insights(media_id: str) -> dict:
             for d in res.get("data", [])}
 
 
-def post_label(caption: str) -> str:
-    """レポートの行ラベル。投稿タグ（投稿:short/… 等）があれば優先、無ければキャプション先頭。"""
+def post_label(caption: str, permalink: str = "") -> str:
+    """レポートの行ラベル。手動対応表 → 投稿タグ（投稿:short/… 等）→ キャプション本文1行目の順。"""
+    shortcode = (permalink or "").rstrip("/").rsplit("/", 1)[-1]
+    if shortcode in LABEL_OVERRIDES:
+        return LABEL_OVERRIDES[shortcode]
     caption = caption or ""
     m = SOURCE_TAG.search(caption)
     if m:
@@ -172,8 +183,12 @@ def post_label(caption: str) -> str:
     m = BARE_TAG.search(caption)
     if m:
         return m.group(0)
-    head = caption.strip().splitlines()[0] if caption.strip() else "(キャプション無し)"
-    return head[:24]
+    # 冒頭の予約導線行（@メンション始まり）や空行を飛ばし、本文の1行目を使う
+    for ln in caption.splitlines():
+        ln = ln.strip()
+        if ln and not ln.startswith("@"):
+            return ln[:24]
+    return "(キャプション無し)"
 
 
 def load_state() -> dict:
@@ -362,7 +377,7 @@ def main():
         avg_ms = ins.get("ig_reels_avg_watch_time")
         row = {
             "id": m["id"],
-            "label": post_label(m.get("caption", "")),
+            "label": post_label(m.get("caption", ""), m.get("permalink", "")),
             "permalink": m.get("permalink", ""),
             "date": posted.strftime("%m/%d"),
             "age_days": (run_dt - posted).days,

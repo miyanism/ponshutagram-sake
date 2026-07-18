@@ -17,7 +17,12 @@ IG/TikTok コメント返信（reply_comments.py / tiktok_line_bot.py）が、
        ^\\d{8}_…  → scenario（output と同名は output 優先）
        …_\\d{8}$  → short    （short/scenarios と同名は short 優先）
 
-出力: 同ディレクトリの caption_index.json（全エントリを作り直す）
+出力: 同ディレクトリの caption_index.json
+
+マージ動作（重要）: ソースフォルダは月替わりで入れ替わる（例: claude.short/scenarios は
+当月の銘柄だけ残る）が、投稿はSNS上に残り続ける。そのため再生成時は既存の
+caption_index.json を読み込み、今回スキャンで見つからなかった過去エントリを保持する
+（同じ source+folder は新スキャンが優先＝内容更新）。索引は実質追記型。
 
 注: Railway には動画フォルダ本体が無いので、生成はローカルで行い、
     caption_index.json だけを railway-app にコミットしてデプロイする。
@@ -204,6 +209,19 @@ def main():
                 if os.path.isfile(inner):
                     add(build_short_entry(name, inner))
 
+    # 既存索引とマージ: ローカルから消えた過去投稿のエントリを保持する
+    kept = 0
+    if os.path.exists(OUT_PATH):
+        try:
+            with open(OUT_PATH, encoding="utf-8") as f:
+                for old in json.load(f):
+                    key = (old.get("source"), old.get("folder"))
+                    if key not in by_key and all(key):
+                        by_key[key] = old
+                        kept += 1
+        except Exception as e:
+            print(f"[warn] 既存索引の読み込み失敗（マージなしで続行）: {e}")
+
     entries = list(by_key.values())
     entries.sort(key=lambda e: (e["source"], e["folder"]))
     with open(OUT_PATH, "w", encoding="utf-8") as f:
@@ -212,7 +230,7 @@ def main():
     n_sc = sum(1 for e in entries if e["source"] == "scenario")
     n_sh = sum(1 for e in entries if e["source"] == "short")
     print(f"[done] {len(entries)} entries -> {OUT_PATH}")
-    print(f"       scenario={n_sc}  short={n_sh}")
+    print(f"       scenario={n_sc}  short={n_sh}  (過去投稿の保持={kept})")
     # 直近の追加分が入っているか軽く可視化
     recent = [e["folder"] for e in entries
               if any(k in e["folder"] for k in ("冷や", "果実", "紀土", "日本酒度", "磨き", "かたの桜", "みむろ", "仙介"))]

@@ -490,7 +490,17 @@ def main():
         context = build_context(entry)
         tag = f"{entry['theme']}/{how}" if entry else f"未照合/{how}"
 
-        for c in fetch_comments(m["id"]):
+        try:
+            comments = fetch_comments(m["id"])
+        except IGAuthError as e:
+            print(f"[FATAL] Instagram認可エラー: {e}")
+            sys.exit(1)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+            # この投稿だけ取得失敗（Meta一時不調等）。クラッシュせず次の投稿へ。次回cronで再試行
+            print(f"  [warn] コメント取得失敗（この投稿をスキップ）: ({tag}) {e}")
+            continue
+
+        for c in comments:
             cid = c["id"]
             frm = c.get("from") or {}
             # 自店アカウント自身のコメントは対象外（トップコメントの from は取得可）
@@ -514,7 +524,12 @@ def main():
             replied_key = f"{m['id']}:{frm.get('id')}"
             is_followup = replied_key in replied
 
-            res = analyze_comment(text, context, is_rally=False, is_followup=is_followup)
+            try:
+                res = analyze_comment(text, context, is_rally=False, is_followup=is_followup)
+            except Exception as e:
+                # Claude API一時不調等。handledに入れず、次回cronで再試行
+                print(f"  [warn] 分析失敗（次回cronで再試行）: @{username} {type(e).__name__}: {e}")
+                continue
             label = res.get("label", "不明")
             tier = res.get("tier", "review")
             reply = (res.get("reply") or "").strip()
@@ -535,7 +550,12 @@ def main():
 
             if tier == "auto":
                 # 投稿前に敵対的検証パス（揚げ足取り対策）
-                v = verify_reply(text, context, reply)
+                try:
+                    v = verify_reply(text, context, reply)
+                except Exception as e:
+                    # 検証APIの失敗は安全側（人間レビュー）に倒す
+                    v = {"verdict": "escalate", "revised_reply": "",
+                         "issues": f"検証API失敗: {type(e).__name__}"}
                 verdict = v.get("verdict", "escalate")
                 if verdict == "ok":
                     final = reply
@@ -556,7 +576,24 @@ def main():
                 v_mark = "検証ok" if verdict == "ok" else "検証→修正"
                 print(f"  [auto/{v_mark}] ({tag}) [{label}] @{username}: {text[:20]} -> {final}")
                 if not DRY_RUN:
-                    api_post(f"{cid}/replies", {"message": final})
+                    try:
+                        api_post(f"{cid}/replies", {"message": final})
+                    except IGAuthError as e:
+                        print(f"[FATAL] Instagram認可エラー: {e}")
+                        sys.exit(1)
+                    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+                        # 返信を受け付けないコメント等。クラッシュ＆毎cron再クラッシュを防ぎ、
+                        # 手動対応としてLINEに回す（handledに入れて再試行ループも止める）
+                        print(f"  [warn] 自動返信の投稿失敗→手動対応へ: {e}")
+                        notify_review({
+                            "tag": tag, "label": f"{label}・自動返信失敗", "username": username,
+                            "comment": text, "reply": final,
+                            "reflection": f"{reflection}\n⚠️ APIエラーで自動投稿できず。手動で返信してください。",
+                            "permalink": m.get("permalink", ""),
+                        })
+                        review_queued += 1
+                        handled.add(cid)
+                        continue
                 auto_posted += 1
                 handled.add(cid)
                 replied.add(replied_key)  # ラリー締め用: この投稿×この人 に返信済み

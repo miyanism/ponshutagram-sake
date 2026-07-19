@@ -1,5 +1,4 @@
 {
-  "current_index": 63,
   "history": [
     {
       "index": 0,
@@ -370,6 +369,11 @@
       "index": 62,
       "name": "わかむすめ トロピカル Bunbun",
       "posted_at": "2026-07-18T06:01:27.672564",
+      "skipped": []
+    },
+    {
+      "name": "新政 colors アッシュ",
+      "posted_at": "2026-07-19T06:03:04.031028",
       "skipped": []
     }
   ]

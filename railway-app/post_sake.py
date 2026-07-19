@@ -18,6 +18,8 @@ GMB_LOCATION  = os.environ["GMB_LOCATION"]   # 例: accounts/123/locations/456
 CLIENT_ID     = os.environ["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
 REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
+LINE_TOKEN    = os.environ.get("LINE_CHANNEL_TOKEN", "")   # 打ち止め通知用（未設定なら通知なし）
+LINE_TO       = os.environ.get("LINE_TO_USER_ID", "")
 
 RESERVE_URL   = "https://www.tablecheck.com/shops/ponshutagram/reserve?utm_source=line"
 BRANCH        = "main"
@@ -96,6 +98,54 @@ def gh_put_json(path, obj, sha, message):
     r.raise_for_status()
 
 
+# ── LINE 通知 ─────────────────────────────────────────
+def notify_line(text):
+    """オーナーにLINE pushで知らせる（LINE未設定ならコンソール出力のみ）。"""
+    if not (LINE_TOKEN and LINE_TO):
+        print(f"[LINE未設定] {text}")
+        return
+    try:
+        requests.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers={"Authorization": f"Bearer {LINE_TOKEN}"},
+            json={"to": LINE_TO, "messages": [{"type": "text", "text": text[:4900]}]},
+            timeout=30,
+        )
+        print("[LINE] 通知を送信しました")
+    except Exception as e:
+        print(f"[LINE送信失敗] {e}")
+
+
+# ── 投稿対象の選定 ────────────────────────────────────
+def select_targets(sake_list, history):
+    """履歴ベースで投稿候補を決める（シート上の位置番号は一切使わない）。
+
+    - 当月にすでに投稿した銘柄は除外（同月内の重複を構造的に防ぐ）
+    - 一度も投稿していない銘柄をシート順で最優先
+    - その後は最終投稿が古い銘柄から再投稿（月替わりで同じ銘柄をまた出せる）
+    """
+    last_posted = {}
+    for h in history:
+        name, ts = h.get("name"), h.get("posted_at", "")
+        if name and ts > last_posted.get(name, ""):
+            last_posted[name] = ts
+
+    this_month = datetime.now().strftime("%Y-%m")
+    seen = set()
+    never, reposts = [], []
+    for s in sake_list:
+        if s["name"] in seen:  # シート内の同名重複行は1件に集約
+            continue
+        seen.add(s["name"])
+        ts = last_posted.get(s["name"])
+        if ts is None:
+            never.append(s)
+        elif not ts.startswith(this_month):
+            reposts.append(s)
+    reposts.sort(key=lambda s: last_posted[s["name"]])
+    return never + reposts
+
+
 # ── Google OAuth2 ──────────────────────────────────────
 def get_access_token():
     """リフレッシュトークンからアクセストークンを取得"""
@@ -149,39 +199,41 @@ def main():
         sys.exit(0)
 
     # データ取得
-    sake_list              = fetch_sake_list_from_sheets()
+    sake_list             = fetch_sake_list_from_sheets()
     state,     state_sha  = gh_get_json("sake_state.json")
+    history               = state.setdefault("history", [])
 
-    idx = state.get("current_index", 0)
-    print(f"次の投稿インデックス: {idx} / {len(sake_list)}")
+    targets = select_targets(sake_list, history)
+    print(f"シート有効銘柄: {len(sake_list)}件 / 今日の投稿候補: {len(targets)}件")
 
-    if idx >= len(sake_list):
-        print("全銘柄の投稿が完了しています。sake_state.jsonをリセットしてください。")
+    if not targets:
+        notify_line(
+            "⚠️ GMB自動投稿: 投稿できる銘柄がありません。\n"
+            f"シートの有効銘柄{len(sake_list)}件はすべて当月投稿済みです。"
+            "スプレッドシートに新しい銘柄を追加してください。"
+        )
         sys.exit(0)
 
     access_token = get_access_token()
 
     # 画像が不正な銘柄はスキップして次へ進む（1枚の不良で全体を止めない）
     skipped = []
-    while idx < len(sake_list):
-        sake = sake_list[idx]
+    for sake in targets:
         image_url = sake["image_url"]
-        print(f"銘柄[{idx}]: {sake['name']}  画像URL: {image_url}")
+        print(f"銘柄: {sake['name']}  画像URL: {image_url}")
 
         if not image_is_valid(image_url):
             print(f"[SKIP] 画像が無効（非公開/小さすぎ等）のためスキップ: {sake['name']}")
-            skipped.append({"index": idx, "name": sake["name"], "reason": "invalid_image"})
-            idx += 1
+            skipped.append({"name": sake["name"], "reason": "invalid_image"})
             continue
 
         # GMB 投稿
         result = post_to_gmb(access_token, sake, image_url)
         print(f"投稿完了: {result.get('name', result)}")
 
-        # 状態更新（GitHubにコミット）
-        state["current_index"] = idx + 1
-        state.setdefault("history", []).append({
-            "index": idx,
+        # 状態更新（GitHubにコミット）。current_index は廃止（履歴が唯一の状態）
+        state.pop("current_index", None)
+        history.append({
             "name":  sake["name"],
             "posted_at": datetime.now().isoformat(),
             "skipped": skipped,
@@ -190,21 +242,19 @@ def main():
             "sake_state.json",
             state,
             state_sha,
-            f"Auto post #{idx + 1}: {sake['name']}",
+            f"Auto post #{len(history)}: {sake['name']}",
         )
-        print(f"sake_state.json を更新しました (index → {idx + 1})")
+        print(f"sake_state.json を更新しました (history: {len(history)}件)")
         if skipped:
             print(f"※ 今回スキップした銘柄: {[s['name'] for s in skipped]}")
         return
 
-    # ループを抜けた = 残り全てが無効画像だった
+    # ループを抜けた = 候補全てが無効画像だった
     print(f"[完了] 投稿可能な銘柄がありませんでした。スキップ: {[s['name'] for s in skipped]}")
-    state["current_index"] = idx
-    gh_put_json(
-        "sake_state.json",
-        state,
-        state_sha,
-        f"Skip invalid images up to index {idx}",
+    notify_line(
+        f"⚠️ GMB自動投稿: 候補{len(targets)}件すべて画像が無効で投稿できませんでした。\n"
+        "スプレッドシートI列の画像URL（Drive共有設定）を確認してください。\n"
+        f"例: {', '.join(s['name'] for s in skipped[:5])}"
     )
 
 

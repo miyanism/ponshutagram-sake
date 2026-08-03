@@ -24,3 +24,6 @@ __pycache__/
 *.pyc
 .tiktok_profile/
 .claude/
+
+# 索引自動更新タスクのログ
+railway-app/refresh_index.log

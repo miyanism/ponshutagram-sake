@@ -55,19 +55,35 @@ def image_is_valid(url):
 
 
 def fetch_sake_list_from_sheets():
-    """スプレッドシートからA列(銘柄名)・G列(テイスティングノート)・I列(画像URL)を取得"""
+    """スプレッドシートから銘柄データを取得。
+    列は位置でなくヘッダー名で特定する（月次でシートの列構成が変わってもズレない）。
+    2026-08にG列ノート/I列画像の決め打ちが列追加でズレ、在庫記号を画像URLとして
+    読んで投稿が全停止した事故の再発防止。"""
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
     r = requests.get(url)
     r.raise_for_status()
     reader = csv.reader(io.StringIO(r.content.decode("utf-8")))
     rows = list(reader)
 
+    header = [h.strip() for h in rows[0]]
+    def col(name):
+        return header.index(name) if name in header else -1
+    i_name, i_note = col("銘柄名"), col("テイスティングノート")
+    i_img, i_stock = col("画像URL"), col("在庫")
+    if i_name < 0 or i_img < 0:
+        raise RuntimeError(f"シートに『銘柄名』『画像URL』のヘッダーが見つかりません: {header}")
+
+    def cell(row, i):
+        return row[i].strip() if 0 <= i < len(row) else ""
+
     sake_list = []
-    for row in rows[1:]:  # 1行目はヘッダーをスキップ
-        name = row[0].strip() if len(row) > 0 else ""
-        note = row[6].strip() if len(row) > 6 else ""
-        image_url = row[8].strip() if len(row) > 8 else ""
+    for row in rows[1:]:
+        name      = cell(row, i_name)
+        note      = cell(row, i_note)
+        image_url = cell(row, i_img)
         if not name or not image_url:
+            continue
+        if cell(row, i_stock) == "×":  # 売切は投稿しない（在庫列が無いシートでは無条件で通る）
             continue
         sake_list.append({
             "name": name,

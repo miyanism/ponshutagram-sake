@@ -61,7 +61,9 @@ REPLY_AFTER = os.environ.get("REPLY_AFTER", "")
 SKIP_IF_REPLIED = os.environ.get("SKIP_IF_REPLIED", "1") == "1"
 
 INDEX_PATH = os.path.join(os.path.dirname(__file__), "caption_index.json")
-MODEL = "claude-haiku-4-5"
+# 生成モデル。自動返信のテンション（パッション・軽さ）を手動下書きに近づけるため sonnet を使う
+# （haiku は同じ指示でも一段おとなしくなる）。検証パスも同モデル。
+MODEL = "claude-sonnet-5"
 
 # 検証済みの店舗ファクト（コメントで店舗を聞かれた時はここ「だけ」を使う）
 STORE_FACTS = """店名: ポン酒タグラム The Bar
@@ -385,8 +387,14 @@ VERIFY_PROMPT = """あなたは日本酒バー「ポン酒タグラム」の校�
 - revise: 軽微な隙があるが、安全な表現に直せば公開可。revised_reply に直した全文を入れる。
 - escalate: 事実の裏が取れない／誤読リスク／論点が割れる等で自動投稿は危険。人間レビューへ回す。
 
+# ★トーン保持（reviseの時の厳守事項）
+検証はあくまで「事実・誤読・揚げ足」のリスク審査であって、トーンの校閲ではない。
+reviseで書き直す時も、元の下書きの熱量・軽さ・パッション・絵文字・口語のノリはそのまま保つこと。
+問題のある一点（言い過ぎ・裏の取れない事実など）だけを最小限に直し、テンションを下げない・固くしない・
+優等生な丁寧語に戻さない。安全な表現に直しても「体温」は残す。トーンだけを理由にreviseしない（トーンは合格）。
+
 迷ったら必ず安全側（escalate）に倒す。出力は次のJSONのみ（前後に文章を付けない）:
-{"verdict":"ok|revise|escalate","revised_reply":"（reviseの時のみ直した全文。それ以外は空文字）","issues":"判断理由を一行で"}"""
+{"verdict":"ok|revise|escalate","revised_reply":"（reviseの時のみ直した全文。トーンは保持）","issues":"判断理由を一行で"}"""
 
 
 def verify_reply(comment_text: str, context: str, draft: str) -> dict:

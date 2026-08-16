@@ -653,6 +653,20 @@
           "reason": "invalid_image"
         }
       ]
+    },
+    {
+      "name": "たのののた 川鶴",
+      "posted_at": "2026-08-16T06:02:07.183385",
+      "skipped": [
+        {
+          "name": "亀泉 CEL-24 純米吟醸 生原酒",
+          "reason": "invalid_image"
+        },
+        {
+          "name": "桂月 にごり",
+          "reason": "invalid_image"
+        }
+      ]
     }
   ]
 }

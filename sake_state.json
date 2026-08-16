@@ -667,6 +667,20 @@
           "reason": "invalid_image"
         }
       ]
+    },
+    {
+      "name": "土佐しらぎく 斬辛 特別純米（雄町）60%",
+      "posted_at": "2026-08-16T11:02:22.116383",
+      "skipped": [
+        {
+          "name": "亀泉 CEL-24 純米吟醸 生原酒",
+          "reason": "invalid_image"
+        },
+        {
+          "name": "桂月 にごり",
+          "reason": "invalid_image"
+        }
+      ]
     }
   ]
 }

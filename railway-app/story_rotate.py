@@ -40,7 +40,9 @@ SLOTS_UTC = [5, 7, 8, 10, 11, 13]  # 6枠（UTC時）＝ JST 14/16/17/19/20/22�
 IMAGE_BASE = os.environ.get(
     "STORY_IMAGE_BASE",
     "https://miyanism.github.io/ponshutagram-sake/ig-stories/")
-MANIFEST = os.path.join(os.path.dirname(__file__), "..", "docs", "ig-stories", "manifest.json")
+# manifestも画像と同じGitHub Pagesの公開URLから取得する（RailwayのRoot=railway-appだと
+# リポジトリ直下の docs/ はコンテナに入らないため。公開URLが唯一のソース＝画像と一元管理）。
+MANIFEST_URL = IMAGE_BASE + "manifest.json"
 DO_PUBLISH = os.environ.get("STORY_PUBLISH") == "1"
 
 LINE_TOKEN = os.environ.get("LINE_CHANNEL_TOKEN", "")
@@ -62,10 +64,10 @@ def notify_line(msg: str):
 
 
 def load_images() -> list:
-    with open(MANIFEST, encoding="utf-8") as f:
-        imgs = json.load(f).get("images", [])
+    with urllib.request.urlopen(MANIFEST_URL, timeout=30) as r:
+        imgs = json.load(r).get("images", [])
     if not imgs:
-        raise RuntimeError("manifest.json の images が空")
+        raise RuntimeError(f"manifest の images が空: {MANIFEST_URL}")
     return imgs
 
 

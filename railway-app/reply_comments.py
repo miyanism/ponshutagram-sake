@@ -149,6 +149,17 @@ SYSTEM_PROMPT = """あなたは日本酒バー「ポン酒タグラム The Bar�
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 
+def _collect_text(msg) -> str:
+    """レスポンスから text ブロックだけを連結して返す。
+    claude-sonnet-5 等は thinking 既定ONで content に ThinkingBlock が混ざり、
+    content[0].text が AttributeError で落ちるため、type=="text" のブロックだけ拾う
+    （モデル差・thinking有無に依存しない安全策）。"""
+    return "".join(
+        getattr(b, "text", "") for b in msg.content
+        if getattr(b, "type", None) == "text"
+    ).strip()
+
+
 class IGAuthError(Exception):
     """トークン期限切れ・権限喪失など、人手対応が必要な恒久エラー。"""
 
@@ -366,14 +377,15 @@ def analyze_comment(comment_text: str, context: str, is_rally: bool,
                        "新しい質問・新しい論点・批判が含まれる場合のみ、通常どおり判定してください。")
     msg = client.messages.create(
         model=MODEL,
-        max_tokens=500,
+        max_tokens=1024,
+        thinking={"type": "disabled"},  # claude-sonnet-5は既定で適応思考ON→contentにThinkingBlockが混ざる。本botはJSON直出し設計なので明示無効化（思考トークンでmax_tokensを食わせない）。
         system=SYSTEM_PROMPT,
         messages=[{
             "role": "user",
             "content": f"# 投稿の文脈\n{context}\n\n# 付いたコメント\n{comment_text}{rally_note}\n\n{ANALYZE_INSTRUCTION}",
         }],
     )
-    raw = msg.content[0].text.strip()
+    raw = _collect_text(msg)
     m = re.search(r"\{.*\}", raw, re.S)
     try:
         data = json.loads(m.group(0) if m else raw)
@@ -412,7 +424,8 @@ def verify_reply(comment_text: str, context: str, draft: str) -> dict:
     """auto候補の下書きを敵対的に検証する内省パス。"""
     msg = client.messages.create(
         model=MODEL,
-        max_tokens=500,
+        max_tokens=1024,
+        thinking={"type": "disabled"},  # 同上: claude-sonnet-5の既定思考を無効化（JSON直出し）
         system=VERIFY_PROMPT,
         messages=[{
             "role": "user",
@@ -420,7 +433,7 @@ def verify_reply(comment_text: str, context: str, draft: str) -> dict:
                        f"# 返信の下書き（これを検証）\n{draft}\n\n上記を検証し、JSONで判定してください。",
         }],
     )
-    raw = msg.content[0].text.strip()
+    raw = _collect_text(msg)
     m = re.search(r"\{.*\}", raw, re.S)
     try:
         return json.loads(m.group(0) if m else raw)

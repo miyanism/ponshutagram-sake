@@ -70,7 +70,12 @@ def generate_reply(review_text, star_rating_str):
         max_tokens=300,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text.strip()
+    # text ブロックだけを取り出す（将来モデルを思考既定ONのものに変えても
+    # ThinkingBlock混入で落ちないための保険。Haiku 4.5では挙動・出力は不変）。
+    return "".join(
+        getattr(b, "text", "") for b in message.content
+        if getattr(b, "type", None) == "text"
+    ).strip()
 
 
 # ── GMB 返信投稿 ───────────────────────────────────────

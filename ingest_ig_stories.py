@@ -46,8 +46,37 @@ REPO = os.path.dirname(os.path.abspath(__file__))
 DEST = os.path.join(REPO, "docs", "ig-stories")
 MANIFEST_JSON = os.path.join(DEST, "manifest.json")
 CSV_NAME = "bio_stories_manifest.csv"
-BIO_RE = re.compile(r"^bio_(\d{2,})\.jpg$", re.IGNORECASE)
+BIO_RE = re.compile(r"^bio_(\d{2,})\.jpg$", re.IGNORECASE)          # 画像（静止画）
+VID_RE = re.compile(r"^story_(\d{2,})\.mp4$", re.IGNORECASE)        # 動画（kinetic等）
+MEDIA_RE = re.compile(r"^(bio_\d{2,}\.jpg|story_\d{2,}\.mp4)$", re.IGNORECASE)  # 掃除対象
 EXPECT_W, EXPECT_H = 1080, 1920
+# 動画の受け渡し契約: 1080x1920・H.264・mp4・3〜60秒。Pages配信を軽く保つためのサイズ目安（超過は警告のみ）。
+VIDEO_BUDGET_MB = 12.0
+VIDEO_MIN_SEC, VIDEO_MAX_SEC = 2.0, 60.0
+
+
+def have_ffprobe() -> bool:
+    import shutil as _sh
+    return _sh.which("ffprobe") is not None
+
+
+def probe_video(path: str):
+    """ffprobe で (width, height, codec_name, duration_sec) を返す。失敗時は None。"""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height,codec_name:format=duration",
+             "-of", "json", path],
+            capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            return None
+        info = json.loads(out.stdout or "{}")
+        st = (info.get("streams") or [{}])[0]
+        dur = float((info.get("format") or {}).get("duration") or 0.0)
+        return int(st.get("width") or 0), int(st.get("height") or 0), st.get("codec_name") or "?", dur
+    except Exception:
+        return None
 
 
 def default_src() -> str:
@@ -63,17 +92,26 @@ def sha(path: str) -> str:
     return h.hexdigest()[:12]
 
 
-def list_bio(folder: str) -> list:
-    """フォルダ内の bio_NN.jpg を番号順で返す（[(num, filename)...]）。"""
+def _list_by_re(folder: str, rx) -> list:
     out = []
     if not os.path.isdir(folder):
         return out
     for fn in os.listdir(folder):
-        m = BIO_RE.match(fn)
+        m = rx.match(fn)
         if m:
             out.append((int(m.group(1)), fn))
     out.sort(key=lambda t: t[0])
     return out
+
+
+def list_bio(folder: str) -> list:
+    """フォルダ内の bio_NN.jpg を番号順で返す（[(num, filename)...]）。"""
+    return _list_by_re(folder, BIO_RE)
+
+
+def list_vid(folder: str) -> list:
+    """フォルダ内の story_NN.mp4 を番号順で返す（[(num, filename)...]）。"""
+    return _list_by_re(folder, VID_RE)
 
 
 def read_csv_order(src: str):
@@ -92,28 +130,28 @@ def read_csv_order(src: str):
     return order, brands
 
 
-def validate(src: str, bios: list, csv_order):
-    """検証。問題（errors）と注意（warns）のリストを返す。"""
+def _check_seq(nums: list, label: str, errors: list):
+    """連番 1..len が揃っているか（欠番/飛び番/重複）を検査。"""
+    if nums and nums != list(range(1, len(nums) + 1)):
+        errors.append(f"{label} の連番が 1..{len(nums)} でない（欠番/飛び番/重複）: 実際={nums}")
+
+
+def validate(src: str, bios: list, vids: list, csv_order):
+    """検証。問題（errors）と注意（warns）のリストを返す。画像＋動画の両方を見る。"""
     errors, warns = [], []
-    if not bios:
-        errors.append(f"src に bio_NN.jpg が1枚も無い: {src}")
+    if not bios and not vids:
+        errors.append(f"src に bio_NN.jpg も story_NN.mp4 も無い: {src}")
         return errors, warns
 
-    nums = [n for n, _ in bios]
-    # 連番・欠番・重複
-    expected = list(range(1, len(nums) + 1))
-    if nums != expected:
-        errors.append(f"連番が 1..{len(nums)} でない（欠番/飛び番/重複）: 実際={nums}")
-    # ゼロ詰め桁の一貫性（bio_01 と bio_1 の混在など）
-    widths = {len(re.match(BIO_RE, fn).group(1)) for _, fn in bios}
-    if len(widths) > 1:
-        warns.append(f"ゼロ詰め桁が不統一（{sorted(widths)}）。manifest順は番号で揃えるが命名統一推奨")
+    # 連番（画像・動画はそれぞれ 1.. で独立採番）
+    _check_seq([n for n, _ in bios], "bio_NN.jpg", errors)
+    _check_seq([n for n, _ in vids], "story_NN.mp4", errors)
 
-    # 寸法・形式
+    # 画像の寸法・形式
     for _, fn in bios:
         p = os.path.join(src, fn)
         if Image is None:
-            warns.append("Pillow 未導入のため寸法チェックをスキップ（1080×1920 を目視確認）")
+            warns.append("Pillow 未導入のため画像寸法チェックをスキップ（1080×1920 を目視確認）")
             break
         try:
             with Image.open(p) as im:
@@ -124,9 +162,30 @@ def validate(src: str, bios: list, csv_order):
         except Exception as e:
             errors.append(f"{fn}: 画像として開けない（{type(e).__name__}: {e}）")
 
-    # CSV と実ファイルの突合
+    # 動画の寸法・コーデック・尺・サイズ
+    if vids and not have_ffprobe():
+        warns.append("ffprobe 未導入のため動画の寸法/尺チェックをスキップ（1080×1920・H.264・mp4 を目視確認）")
+    elif vids:
+        for _, fn in vids:
+            p = os.path.join(src, fn)
+            info = probe_video(p)
+            if info is None:
+                errors.append(f"{fn}: ffprobe で読めない（壊れ/非対応の可能性）")
+                continue
+            w, h, codec, dur = info
+            if (w, h) != (EXPECT_W, EXPECT_H):
+                errors.append(f"{fn}: 寸法が {w}x{h}（期待 {EXPECT_W}x{EXPECT_H}）")
+            if codec.lower() not in ("h264", "avc1"):
+                warns.append(f"{fn}: 映像コーデックが {codec}（IG推奨 H.264）。再エンコード推奨")
+            if not (VIDEO_MIN_SEC <= dur <= VIDEO_MAX_SEC):
+                errors.append(f"{fn}: 尺 {dur:.1f}s が範囲外（{VIDEO_MIN_SEC}〜{VIDEO_MAX_SEC}s）")
+            mb = os.path.getsize(p) / (1024 * 1024)
+            if mb > VIDEO_BUDGET_MB:
+                warns.append(f"{fn}: {mb:.1f}MiB（目安 {VIDEO_BUDGET_MB}MiB超）。Pages軽量化のため再圧縮推奨")
+
+    # CSV と実ファイルの突合（画像＋動画）
+    have = {fn for _, fn in bios} | {fn for _, fn in vids}
     if csv_order is not None:
-        have = {fn for _, fn in bios}
         want = set(csv_order)
         miss = want - have
         extra = have - want
@@ -139,15 +198,15 @@ def validate(src: str, bios: list, csv_order):
     return errors, warns
 
 
-def build_manifest_order(bios: list, csv_order):
-    """manifest.json に書く images 配列の順序を決める（CSV順を優先、無ければ番号順）。"""
-    by_num = [fn for _, fn in bios]
+def build_manifest_order(media_default: list, csv_order):
+    """manifest.json に書く images 配列の順序を決める（CSV順を優先、無ければ既定順）。
+    media_default ＝既定順の全メディア（画像を番号順→動画を番号順）。"""
     if not csv_order:
-        return by_num
-    have = set(by_num)
-    # CSV順のうち実在するものだけ＋CSV漏れを末尾に番号順で足す
+        return list(media_default)
+    have = set(media_default)
+    # CSV順のうち実在するものだけ＋CSV漏れを末尾に既定順で足す
     ordered = [fn for fn in csv_order if fn in have]
-    ordered += [fn for fn in by_num if fn not in set(ordered)]
+    ordered += [fn for fn in media_default if fn not in set(ordered)]
     return ordered
 
 
@@ -188,23 +247,24 @@ def print_diff(src: str, bios: list, new_order: list, brands: dict):
             print(f"  {i:2d}. {fn}  {brands.get(fn, '')}")
 
 
-def apply_swap(src: str, bios: list, new_order: list):
-    """docs/ig-stories の bio_*.jpg を全消し→src からコピー→manifest.json 再生成。gitは触らない。"""
+def apply_swap(src: str, media_files: list, new_order: list):
+    """docs/ig-stories の bio_*.jpg / story_*.mp4 を全消し→src からコピー→manifest.json 再生成。gitは触らない。
+    media_files ＝コピーする実ファイル名のリスト（画像＋動画）。"""
     os.makedirs(DEST, exist_ok=True)
-    # 既存の bio_NN.jpg のみ削除（test_*.jpg や manifest.json は残す）
+    # 既存の bio_NN.jpg / story_NN.mp4 のみ削除（test_*.jpg や manifest.json は残す）
     removed = 0
     for fn in os.listdir(DEST):
-        if BIO_RE.match(fn):
+        if MEDIA_RE.match(fn):
             os.remove(os.path.join(DEST, fn))
             removed += 1
     # コピー
-    for _, fn in bios:
+    for fn in media_files:
         shutil.copy2(os.path.join(src, fn), os.path.join(DEST, fn))
     # manifest.json 再生成
     with open(MANIFEST_JSON, "w", encoding="utf-8") as f:
         json.dump({"images": new_order}, f, ensure_ascii=False, indent=1)
         f.write("\n")
-    print(f"\n[apply] docs/ig-stories: 旧{removed}枚削除 → 新{len(bios)}枚コピー → manifest.json再生成（{len(new_order)}件）")
+    print(f"\n[apply] docs/ig-stories: 旧{removed}件削除 → 新{len(media_files)}件コピー → manifest.json再生成（{len(new_order)}件）")
     print("[apply] git は触っていません。次の手順:")
     print("        git -C \"%s\" add docs/ig-stories" % REPO)
     print("        git -C \"%s\" status   # 差分を目視確認（オーナー画像OK後）" % REPO)
@@ -224,9 +284,11 @@ def main():
     print(f"src  = {src}")
     print(f"dest = {DEST}")
     bios = list_bio(src)
+    vids = list_vid(src)
     csv_order, brands = read_csv_order(src)
+    print(f"検出: 画像 {len(bios)}枚 / 動画 {len(vids)}本")
 
-    errors, warns = validate(src, bios, csv_order)
+    errors, warns = validate(src, bios, vids, csv_order)
     for w in warns:
         print(f"  [warn] {w}")
     if errors:
@@ -235,13 +297,15 @@ def main():
             print(f"  - {e}")
         sys.exit(1)
 
-    new_order = build_manifest_order(bios, csv_order)
-    print_diff(src, bios, new_order, brands)
+    # 既定順＝画像を番号順→動画を番号順（CSVがあればCSV順が優先）
+    media_default = [fn for _, fn in bios] + [fn for _, fn in vids]
+    new_order = build_manifest_order(media_default, csv_order)
+    print_diff(src, media_default, new_order, brands)
 
     if not args.apply:
         print("\n[dry-run] 書き込みしていません。問題なければ --apply を付けて再実行。")
         return
-    apply_swap(src, bios, new_order)
+    apply_swap(src, media_default, new_order)
 
 
 if __name__ == "__main__":

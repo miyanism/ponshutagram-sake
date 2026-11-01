@@ -7,10 +7,11 @@ story_rotate.py — ストーリーズ6枠/日ローテ投稿（Railway cron か
 
 cron想定（UTCで6時刻）:  0 5,7,8,10,11,13 * * *
 
-画像:
-  GitHub Pages で公開ホストした画像を巡回。ファイル一覧は docs/ig-stories/manifest.json
-  （{"images": ["bio_01.jpg", ...]}）から読む。同じ画像が別日に再登場してOK（広告刷り込み運用）。
-  画像URL = STORY_IMAGE_BASE + <filename>（既定 https://miyanism.github.io/ponshutagram-sake/ig-stories/）
+メディア（画像／動画）:
+  GitHub Pages で公開ホストしたメディアを巡回。一覧は docs/ig-stories/manifest.json
+  （{"images": ["bio_01.jpg", ..., "story_01.mp4"]}）から読む。同じ枠が別日に再登場してOK（刷り込み運用）。
+  メディアURL = STORY_IMAGE_BASE + <filename>（既定 https://miyanism.github.io/ponshutagram-sake/ig-stories/）
+  画像(.jpg)／動画(.mp4)の別は story_publish.post_story がURL拡張子で自動判定（動画は非同期処理の完了待ちを内包）。
 
 巡回インデックス（状態を持たない決定論的方式）:
   グローバル枠番号 = 日付序数 * 6 + その日の枠index(0..5)  →  画像 = images[番号 % 枚数]
@@ -95,7 +96,8 @@ def main():
         idx = pick_index(now, len(images))
         fname = images[idx]
         url = IMAGE_BASE + fname
-        print(f"[start] {now.isoformat()} slot→idx={idx}/{len(images)} img={fname} "
+        kind = "video" if fname.lower().endswith((".mp4", ".mov")) else "image"
+        print(f"[start] {now.isoformat()} slot→idx={idx}/{len(images)} {kind}={fname} "
               f"publish={'ON' if DO_PUBLISH else 'OFF(dry)'}")
         res = story_publish.post_story(url, DO_PUBLISH)
         print(f"[done] {res}")

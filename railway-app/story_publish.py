@@ -85,13 +85,83 @@ def _api_post(path: str, data: dict, retries: int = 3) -> dict:
     raise RuntimeError(f"POST {path}: 不明な失敗")
 
 
+def _api_get(path: str, params: dict, retries: int = 3) -> dict:
+    """graph.instagram.com への GET（コンテナの status_code 確認に使う）。"""
+    qs = urllib.parse.urlencode({**params, "access_token": TOKEN})
+    last = None
+    for i in range(retries):
+        try:
+            req = urllib.request.Request(f"{GRAPH}/{path}?{qs}", method="GET")
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            txt = ""
+            try:
+                txt = e.read().decode("utf-8", "replace")[:500]
+            except Exception:
+                pass
+            if _is_auth_error(txt):
+                raise IGAuthError(f"GET {path}: HTTP {e.code} 認可エラー（要トークン再発行） {txt}") from e
+            last = e
+            if e.code not in (429, 500, 502, 503, 504) or i == retries - 1:
+                raise RuntimeError(f"GET {path}: HTTP {e.code} {txt}") from e
+            print(f"  [retry {i+1}/{retries}] GET {path}: HTTP {e.code}")
+        except (urllib.error.URLError, TimeoutError) as e:
+            last = e
+            if i == retries - 1:
+                raise
+            print(f"  [retry {i+1}/{retries}] GET {path}: {type(e).__name__}")
+        time.sleep(2 * (i + 1))
+    if last:
+        raise last
+    raise RuntimeError(f"GET {path}: 不明な失敗")
+
+
+VIDEO_EXTS = (".mp4", ".mov")
+
+
+def is_video_url(media_url: str) -> bool:
+    """URL末尾の拡張子で動画かどうかを判定（.mp4/.mov）。manifest混載の種別分岐に使う。"""
+    path = urllib.parse.urlparse(media_url).path.lower()
+    return path.endswith(VIDEO_EXTS)
+
+
 def create_story_container(image_url: str) -> str:
-    """STORIESコンテナを作成し creation_id を返す（この時点では非公開）。"""
+    """画像STORIESコンテナを作成し creation_id を返す（この時点では非公開）。"""
     res = _api_post(f"{IG_USER_ID}/media", {"media_type": "STORIES", "image_url": image_url})
     cid = res.get("id")
     if not cid:
         raise RuntimeError(f"creation_id が返らない: {res}")
     return cid
+
+
+def create_video_story_container(video_url: str) -> str:
+    """動画STORIESコンテナを作成し creation_id を返す（非公開）。
+    画像と違い動画はMeta側の処理が非同期＝publish前に status_code=FINISHED を待つ必要がある。"""
+    res = _api_post(f"{IG_USER_ID}/media", {"media_type": "STORIES", "video_url": video_url})
+    cid = res.get("id")
+    if not cid:
+        raise RuntimeError(f"creation_id が返らない: {res}")
+    return cid
+
+
+def wait_container_finished(creation_id: str, timeout_s: int = 240, interval_s: int = 8) -> None:
+    """動画コンテナの status_code が FINISHED になるまでポーリング（最大 timeout_s 秒）。
+    ERROR/EXPIRED は即例外。IN_PROGRESS はまだ処理中＝待つ。timeout で例外。"""
+    deadline = time.time() + timeout_s
+    last = None
+    while time.time() < deadline:
+        res = _api_get(creation_id, {"fields": "status_code,status"})
+        code = res.get("status_code")
+        last = res
+        if code == "FINISHED":
+            return
+        if code in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"動画コンテナ処理失敗 status_code={code}: {res}")
+        # IN_PROGRESS（またはPUBLISHED以外）＝まだ処理中
+        print(f"  [video] 処理待ち status_code={code} …{interval_s}s後に再確認")
+        time.sleep(interval_s)
+    raise RuntimeError(f"動画コンテナが {timeout_s}s 以内に FINISHED にならない（最後の応答: {last}）")
 
 
 def publish_container(creation_id: str) -> str:
@@ -103,27 +173,38 @@ def publish_container(creation_id: str) -> str:
     return mid
 
 
-def post_story(image_url: str, do_publish: bool) -> dict:
-    """1枚をストーリーズ投稿。do_publish=False ならコンテナ作成まで（非公開）。"""
-    cid = create_story_container(image_url)
-    print(f"[container] creation_id={cid}  image={image_url}")
+def post_story(media_url: str, do_publish: bool) -> dict:
+    """1件をストーリーズ投稿。画像/動画はURL拡張子で自動判定。
+    do_publish=False ならコンテナ作成まで（非公開）。動画は作成後 status_code=FINISHED を待ってから公開。"""
+    video = is_video_url(media_url)
+    kind = "video" if video else "image"
+    cid = create_video_story_container(media_url) if video else create_story_container(media_url)
+    print(f"[container] creation_id={cid}  {kind}={media_url}")
     if not do_publish:
         print("[dry] STORY_PUBLISH 未設定のため公開しません（コンテナ作成のみ・非公開）")
-        return {"creation_id": cid, "published": False}
-    # Metaはコンテナ作成直後は処理中のことがあるため、少し待ってからpublish
-    time.sleep(5)
+        return {"creation_id": cid, "kind": kind, "published": False}
+    if video:
+        # 動画はMeta側の処理完了（FINISHED）を待ってからでないと publish が失敗する
+        wait_container_finished(cid)
+    else:
+        # 画像もコンテナ作成直後は処理中のことがあるため、少し待ってからpublish
+        time.sleep(5)
     mid = publish_container(cid)
-    print(f"[published] media_id={mid}  ★ストーリーに公開されました")
-    return {"creation_id": cid, "media_id": mid, "published": True}
+    print(f"[published] media_id={mid}  ★ストーリーに公開されました（{kind}）")
+    return {"creation_id": cid, "media_id": mid, "kind": kind, "published": True}
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image-url", required=True, help="ストーリーに載せる画像の公開URL")
+    ap.add_argument("--image-url", help="ストーリーに載せる画像の公開URL")
+    ap.add_argument("--video-url", help="ストーリーに載せる動画(mp4)の公開URL")
     ap.add_argument("--publish", action="store_true",
                     help="実際に公開する（付けなければコンテナ作成のみ＝非公開）")
     args = ap.parse_args()
 
+    media_url = args.video_url or args.image_url
+    if not media_url:
+        ap.error("--image-url か --video-url のどちらかが必要です")
     if not TOKEN:
         print("[FATAL] IG_ACCESS_TOKEN 未設定")
         sys.exit(1)
@@ -132,7 +213,7 @@ def main():
     # ここでは「明示的な --publish もしくは STORY_PUBLISH=1」のどちらかで公開（cron運用はSTORY_PUBLISH=1で回す）。
     do_publish = args.publish or os.environ.get("STORY_PUBLISH") == "1"
     try:
-        post_story(args.image_url, do_publish)
+        post_story(media_url, do_publish)
     except IGAuthError as e:
         print(f"[FATAL] {e}")
         sys.exit(1)

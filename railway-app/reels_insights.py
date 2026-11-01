@@ -85,7 +85,7 @@ METRICS = ("views,reach,likes,comments,saved,shares,total_interactions,"
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 # キャプション末尾の投稿タグ（reply_comments.py と同じ運用）: 投稿:short/... ・ 投稿:scenario/...
-SOURCE_TAG = re.compile(r"(short|scenario)/([^\s#、。,]+)")
+SOURCE_TAG = re.compile(r"(short|scenario|zukan)/([^\s#、。,]+)")
 BARE_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
 
 # タグ無しで投稿済みのReelsの手動対応表（permalinkのショートコード → ラベル）。

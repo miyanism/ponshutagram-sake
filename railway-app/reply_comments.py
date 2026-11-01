@@ -243,7 +243,7 @@ def normalize(text: str) -> str:
 
 
 # ソース明示タグ:  投稿:short/日々醸造_日日山田錦_20260515  /  投稿:scenario/20260428_おっちゃん酒
-SOURCE_TAG = re.compile(r"(short|scenario)/([^\s#、。,]+)")
+SOURCE_TAG = re.compile(r"(short|scenario|zukan)/([^\s#、。,]+)")
 # 無印の旧タグ（scenario扱い）:  投稿:20260428_おっちゃん酒
 BARE_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
 
@@ -259,6 +259,15 @@ def match_post(caption: str, index: list):
 
     # --- 1) ソース明示タグ ---
     for src, ident in SOURCE_TAG.findall(caption):
+        if src == "zukan":
+            # 図鑑リール: 投稿:zukan/NN。索引の folder は「YYYYMM_NN」（月替わりでNNが重複しても
+            # 新しい月を優先）。汎用の部分一致だと zukan/11 が 202611_01 に誤一致するため専用照合。
+            nn = ident.zfill(2)
+            cands = [e for e in index
+                     if e["source"] == "zukan" and e["folder"].rsplit("_", 1)[-1] == nn]
+            if cands:
+                return max(cands, key=lambda e: e["folder"]), "tag:zukan"
+            continue
         for e in index:
             if e["source"] == src and e["folder"] == ident:
                 return e, f"tag:{src}"
@@ -304,6 +313,16 @@ def build_context(entry) -> str:
     if not entry:
         body = ("【返信トーン指針】投稿の詳細が不明。議論の軸・文体を守り、無難に・断定を避けて返信する。\n"
                 "（この投稿の詳細文脈は不明。コメント内容のみから返信）")
+    elif entry.get("source") == "zukan":
+        # ボトル図鑑リール: 3本の飲み比べ紹介。事実源は月次マスターのテイスティングノートのみ。
+        body = ("【返信トーン指針】この投稿は『ボトル図鑑』＝同じ切り口の3本を飲み比べで紹介するリール。"
+                "盛り上げ役のトーンで、3本の違い・飲み比べの楽しさを伝え、来店や飲み比べに繋げる。"
+                "内輪ノリにせず、初めての人にも伝わる言葉で。"
+                "銘柄の味・香り・造りに答える時は下の投稿キャプションに書かれた内容だけに立脚し、"
+                "ここに無い数値や固有名詞、味の描写は創作しない（分からない点は来店時にスタッフへ、と案内）。\n\n"
+                f"図鑑テーマ: {entry['theme']}")
+        if entry.get("caption"):
+            body += f"\n\n投稿キャプション（テイスティングノート）:\n{entry['caption']}"
     elif entry.get("source") == "short":
         # 日本酒紹介動画: 銘柄の魅力を伝え、来店・飲み比べ・体験に繋げるトーン
         body = ("【返信トーン指針】この投稿は特定銘柄の紹介動画。コメントには銘柄の魅力・造りの面白さを伝え、"

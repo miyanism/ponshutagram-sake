@@ -168,6 +168,48 @@ def build_short_entry(stem: str, md_path: str):
     }
 
 
+ZUKAN_SECTION = re.compile(r"^##\s*(\d{1,3})｜(.+?)\s*$")
+ZUKAN_TAG_LINE = re.compile(r"^\s*投稿[:：]\s*zukan/\S+\s*$")
+
+
+def build_zukan_entries(folder: str, dirpath: str) -> list:
+    """ボトル図鑑リール（偶数日19:00の飲み比べ枠）のキャプション集 c3_caption_*.md から、
+    節 `## NN｜テーマ` ごとに1エントリ（source="zukan"）。照合タグは キャプション末尾の `投稿:zukan/NN`。
+    folder は「YYYYMM_NN」（月替わりでNNが重複しても区別。reply_comments は新しい月を優先）。"""
+    cap_file = glob_one(dirpath, "c3_caption_")
+    if not cap_file:
+        return []
+    month = folder[:6] if re.match(r"^\d{6}", folder) else folder
+    out, cur = [], None
+
+    def flush():
+        if cur is None:
+            return
+        body = "\n".join(cur["lines"]).strip().strip("-").strip()
+        caption = "\n".join(ln for ln in body.splitlines() if not ZUKAN_TAG_LINE.match(ln)).strip()
+        out.append({
+            "source": "zukan",
+            "folder": f"{month}_{cur['nn']}",
+            "theme": cur["theme"],
+            "caption": cap("caption", caption),
+            "caption_norm": normalize(caption),
+            "slide_text": "", "note": "", "facts": "", "script": "",
+        })
+
+    for ln in read(cap_file).splitlines():
+        m = ZUKAN_SECTION.match(ln)
+        if m:
+            flush()
+            cur = {"nn": m.group(1).zfill(2), "theme": m.group(2), "lines": []}
+        elif ln.startswith("## "):   # YouTubeタイトル・メタ等＝図鑑本編の終わり
+            flush()
+            cur = None
+        elif cur is not None:
+            cur["lines"].append(ln)
+    flush()
+    return out
+
+
 def main():
     by_key = {}   # (source, folder) -> entry ；先に入れた方を優先（output/short 優先）
 
@@ -184,6 +226,9 @@ def main():
             dirpath = os.path.join(SCENARIO_OUT, folder)
             if os.path.isdir(dirpath) and DATE_PREFIX.match(folder):
                 add(build_scenario_entry(folder, dirpath))
+                if "図鑑" in folder:
+                    for ze in build_zukan_entries(folder, dirpath):
+                        add(ze)
 
     # 2) short/scenarios（.md 直置き or 同名フォルダ内）
     if os.path.isdir(SHORT_DIR):
@@ -230,7 +275,8 @@ def main():
     n_sc = sum(1 for e in entries if e["source"] == "scenario")
     n_sh = sum(1 for e in entries if e["source"] == "short")
     print(f"[done] {len(entries)} entries -> {OUT_PATH}")
-    print(f"       scenario={n_sc}  short={n_sh}  (過去投稿の保持={kept})")
+    n_zu = sum(1 for e in entries if e["source"] == "zukan")
+    print(f"       scenario={n_sc}  short={n_sh}  zukan={n_zu}  (過去投稿の保持={kept})")
     # 直近の追加分が入っているか軽く可視化
     recent = [e["folder"] for e in entries
               if any(k in e["folder"] for k in ("冷や", "果実", "紀土", "日本酒度", "磨き", "かたの桜", "みむろ", "仙介"))]

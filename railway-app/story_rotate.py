@@ -13,6 +13,10 @@ cron想定（UTCで6時刻）:  0 5,7,8,10,11,13 * * *
   メディアURL = STORY_IMAGE_BASE + <filename>（既定 https://miyanism.github.io/ponshutagram-sake/ig-stories/）
   画像(.jpg)／動画(.mp4)の別は story_publish.post_story がURL拡張子で自動判定（動画は非同期処理の完了待ちを内包）。
 
+期間限定の差し込み（イベント告知など）:
+  manifest.json に "overrides": [{"date":"2026-11-18","slot_jst":22,"file":"aramasa1125_1118.jpg"}] を足すと、
+  JSTのその日付×その枠だけ通常ローテの代わりにそのファイルを出す。日付が過ぎれば自然に通常ローテへ戻る。
+
 巡回インデックス（状態を持たない決定論的方式）:
   グローバル枠番号 = 日付序数 * 6 + その日の枠index(0..5)  →  画像 = images[番号 % 枚数]
   ＝毎投稿+1で進み、枚数を一周したら頭に戻る。cronが多重発火しても同じ枠なら同じ画像＝冪等寄り。
@@ -64,12 +68,32 @@ def notify_line(msg: str):
         print(f"  [LINE送信失敗] {e}")
 
 
-def load_images() -> list:
+def load_manifest() -> dict:
     with urllib.request.urlopen(MANIFEST_URL, timeout=30) as r:
-        imgs = json.load(r).get("images", [])
-    if not imgs:
+        m = json.load(r)
+    if not m.get("images"):
         raise RuntimeError(f"manifest の images が空: {MANIFEST_URL}")
-    return imgs
+    return m
+
+
+def load_images() -> list:
+    return load_manifest()["images"]
+
+
+def find_override(now_utc: datetime.datetime, overrides: list):
+    """期間限定の差し込み。manifest の overrides = [{"date":"YYYY-MM-DD","slot_jst":22,"file":"x.jpg"}]。
+    JSTの日付×時刻（枠）が一致した時だけそのファイルを返す。日付が過ぎれば一致しなくなる＝自動で通常ローテに戻る
+    （消し忘れ防止）。定刻外の手動実行は _nearest_slot と同じ丸めで枠を決める。"""
+    if not overrides:
+        return None
+    jst = now_utc + datetime.timedelta(hours=9)
+    slot_utc = SLOTS_UTC[SLOTS_UTC.index(now_utc.hour)] if now_utc.hour in SLOTS_UTC \
+        else SLOTS_UTC[_nearest_slot(now_utc.hour)]
+    slot_jst = (slot_utc + 9) % 24
+    for o in overrides:
+        if o.get("date") == jst.date().isoformat() and int(o.get("slot_jst", -1)) == slot_jst:
+            return o.get("file")
+    return None
 
 
 def pick_index(now_utc: datetime.datetime, n: int) -> int:
@@ -92,13 +116,15 @@ def main():
 
     now = datetime.datetime.now(datetime.timezone.utc)
     try:
-        images = load_images()
+        manifest = load_manifest()
+        images = manifest["images"]
         idx = pick_index(now, len(images))
-        fname = images[idx]
+        ov = find_override(now, manifest.get("overrides", []))
+        fname = ov or images[idx]
         url = IMAGE_BASE + fname
         kind = "video" if fname.lower().endswith((".mp4", ".mov")) else "image"
         print(f"[start] {now.isoformat()} slot→idx={idx}/{len(images)} {kind}={fname} "
-              f"publish={'ON' if DO_PUBLISH else 'OFF(dry)'}")
+              f"{'OVERRIDE ' if ov else ''}publish={'ON' if DO_PUBLISH else 'OFF(dry)'}")
         res = story_publish.post_story(url, DO_PUBLISH)
         print(f"[done] {res}")
     except story_publish.IGAuthError as e:

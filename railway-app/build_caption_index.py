@@ -168,7 +168,7 @@ def build_short_entry(stem: str, md_path: str):
     }
 
 
-ZUKAN_SECTION = re.compile(r"^##\s*(\d{1,3})｜(.+?)\s*$")
+ZUKAN_SECTION = re.compile(r"^##\s*(v?\d{1,3})｜(.+?)\s*$")
 ZUKAN_TAG_LINE = re.compile(r"^\s*投稿[:：]\s*zukan/\S+\s*$")
 
 

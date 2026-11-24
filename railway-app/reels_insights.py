@@ -85,7 +85,7 @@ METRICS = ("views,reach,likes,comments,saved,shares,total_interactions,"
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 # キャプション末尾の投稿タグ（reply_comments.py と同じ運用）: 投稿:short/... ・ 投稿:scenario/...
-SOURCE_TAG = re.compile(r"(short|scenario|zukan)/([^\s#、。,]+)")
+SOURCE_TAG = re.compile(r"(short|scenario|zukan|sakev2)/([^\s#、。,]+)")
 BARE_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
 
 # タグ無しで投稿済みのReelsの手動対応表（permalinkのショートコード → ラベル）。
@@ -231,6 +231,30 @@ def judge(row: dict, median_reach: float) -> str:
     return mark
 
 
+def sakev2_by_type(rows: list) -> list:
+    """sakev2（声付き1銘柄リール）の型別集計。ラベル `sakev2/NN_型_銘柄` の「型」（H5a/H5b/見解…）ごとに、
+    経過7日以上の行だけを平均再生（秒）で束ねる。該当が無くても空欄表で落ちない。"""
+    groups = {}
+    for r in rows:
+        lab = r["label"]
+        if not lab.startswith("sakev2/") or r["age_days"] < 7:
+            continue
+        parts = lab.split("/", 1)[1].split("_")
+        kind = parts[1] if len(parts) >= 3 else "(型不明)"
+        groups.setdefault(kind, []).append(r)
+    lines = ["## sakev2 型別（経過7日以上・平均再生で比較）", ""]
+    if not groups:
+        return lines + ["（該当なし。sakev2 の投稿が経過7日に達するとここに出ます）", ""]
+    lines += ["| 型 | 本数 | 平均再生(平均) | 再生(平均) | リーチ(平均) | 保存(平均) |", "|---|---|---|---|---|---|"]
+    for kind in sorted(groups):
+        g = groups[kind]
+        avs = [x["avg_watch_s"] for x in g if x["avg_watch_s"] is not None]
+        avg_s = f"{sum(avs) / len(avs):.1f}s" if avs else "-"
+        mean = lambda k: sum((x[k] or 0) for x in g) / len(g)
+        lines.append(f"| {kind} | {len(g)} | {avg_s} | {mean('views'):,.0f} | {mean('reach'):,.0f} | {mean('saved'):,.1f} |")
+    return lines + [""]
+
+
 def build_report(rows: list, run_dt: datetime.datetime, prev_updated: str) -> str:
     reaches = [r["reach"] for r in rows if r["reach"]]
     median_reach = statistics.median(reaches) if reaches else 0
@@ -266,6 +290,7 @@ def build_report(rows: list, run_dt: datetime.datetime, prev_updated: str) -> st
             f"| {r['saved']:,}{fmt_delta(r['saved'], r['prev'].get('saved'))} ({save_rate}) "
             f"| {r['shares']:,} | {r['comments']:,} | {avg_s} "
             f"| {judge(r, median_reach)} |")
+    lines += [""] + sakev2_by_type(rows)
     lines += [
         "",
         "## 取得できない指標（API制約・2026-07-13実査）",

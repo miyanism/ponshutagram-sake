@@ -210,6 +210,54 @@ def build_zukan_entries(folder: str, dirpath: str) -> list:
     return out
 
 
+SAKEV2_DIR = re.compile(r"^\d{8}_sakev2\d+_")
+SAKEV2_TAG = re.compile(r"計測タグ[:：]\s*`?(?:投稿:)?sakev2/([^`\s/／]+)")
+SAKEV2_TITLE = re.compile(r"^#\s*sakev2/\d+\s+(.+?)\s*｜")
+SAKEV2_FACTS_CAP = 3500
+
+
+def build_sakev2_entries(dirpath: str) -> list:
+    """声付き1銘柄リール（sakev2）の台本フォルダから、型（H5a/H5b/見解…）ごとに1エントリ（source="sakev2"）。
+    folder は各台本の「計測タグ:」行の識別子（例 `01_H5b_玉川`＝IGキャプション末尾の `投稿:sakev2/01_H5b_玉川` と同じ）。
+    script=「## 🎬 シナリオ」節（読み上げ文言）／facts=基準台本の「事実ガード」＋その台本の「出典」節。
+    台本MDに計測タグ行が無いもの（基準台本・フック案）はエントリにしない（事実ガードの供給元として読むだけ）。"""
+    try:
+        names = sorted(n for n in os.listdir(dirpath) if re.match(r"^c2_sakev2-\d+_.*\.md$", n))
+    except Exception:
+        return []
+    guard_by_nn = {}   # NN -> 事実ガード節（同期版/見解 以外の基準台本から）
+    for n in names:
+        if "同期版" in n or "見解" in n:
+            continue
+        nn = re.match(r"^c2_sakev2-(\d+)_", n).group(1)
+        g = section(read(os.path.join(dirpath, n)), r"事実ガード")
+        if g:
+            guard_by_nn[nn] = g
+    out = []
+    for n in names:
+        md = read(os.path.join(dirpath, n))
+        m = SAKEV2_TAG.search(md)
+        if not m:
+            continue
+        ident = m.group(1)                       # 例: 01_H5b_玉川
+        nn = ident.split("_", 1)[0]
+        t = SAKEV2_TITLE.search(md)
+        theme = t.group(1) if t else ident
+        script = section(md, r"シナリオ")
+        facts = "\n\n".join(x for x in (guard_by_nn.get(nn, ""), section(md, r"出典")) if x)
+        out.append({
+            "source": "sakev2",
+            "folder": ident,
+            "theme": theme,
+            "caption": "",
+            "caption_norm": "",
+            "slide_text": "", "note": "",
+            "facts": facts[:SAKEV2_FACTS_CAP],
+            "script": cap("script", script),
+        })
+    return out
+
+
 def main():
     by_key = {}   # (source, folder) -> entry ；先に入れた方を優先（output/short 優先）
 
@@ -225,6 +273,10 @@ def main():
         for folder in sorted(os.listdir(SCENARIO_OUT)):
             dirpath = os.path.join(SCENARIO_OUT, folder)
             if os.path.isdir(dirpath) and DATE_PREFIX.match(folder):
+                if SAKEV2_DIR.match(folder):
+                    for se in build_sakev2_entries(dirpath):
+                        add(se)
+                    continue   # sakev2 は台本の型ごとのエントリのみ（scenario エントリは作らない）
                 add(build_scenario_entry(folder, dirpath))
                 if "図鑑" in folder:
                     for ze in build_zukan_entries(folder, dirpath):
@@ -247,6 +299,8 @@ def main():
             path = os.path.join(MOVIE_IN, name)
             if not os.path.isdir(path):
                 continue
+            if SAKEV2_DIR.match(name):
+                continue   # sakev2 は scenario/output 側の台本から作る
             if DATE_PREFIX.match(name):
                 add(build_scenario_entry(name, path))
             elif DATE_SUFFIX.search(name):
@@ -276,7 +330,8 @@ def main():
     n_sh = sum(1 for e in entries if e["source"] == "short")
     print(f"[done] {len(entries)} entries -> {OUT_PATH}")
     n_zu = sum(1 for e in entries if e["source"] == "zukan")
-    print(f"       scenario={n_sc}  short={n_sh}  zukan={n_zu}  (過去投稿の保持={kept})")
+    n_s2 = sum(1 for e in entries if e["source"] == "sakev2")
+    print(f"       scenario={n_sc}  short={n_sh}  zukan={n_zu}  sakev2={n_s2}  (過去投稿の保持={kept})")
     # 直近の追加分が入っているか軽く可視化
     recent = [e["folder"] for e in entries
               if any(k in e["folder"] for k in ("冷や", "果実", "紀土", "日本酒度", "磨き", "かたの桜", "みむろ", "仙介"))]

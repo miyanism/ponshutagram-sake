@@ -243,7 +243,7 @@ def normalize(text: str) -> str:
 
 
 # ソース明示タグ:  投稿:short/日々醸造_日日山田錦_20260515  /  投稿:scenario/20260428_おっちゃん酒
-SOURCE_TAG = re.compile(r"(short|scenario|zukan)/([^\s#、。,]+)")
+SOURCE_TAG = re.compile(r"(short|scenario|zukan|sakev2)/([^\s#、。,]+)")
 # 無印の旧タグ（scenario扱い）:  投稿:20260428_おっちゃん酒
 BARE_TAG = re.compile(r"\d{8}_[^\s#、。,/]+")
 
@@ -267,6 +267,19 @@ def match_post(caption: str, index: list):
                      if e["source"] == "zukan" and e["folder"].rsplit("_", 1)[-1] == nn]
             if cands:
                 return max(cands, key=lambda e: e["folder"]), "tag:zukan"
+            continue
+        if src == "sakev2":
+            # 声付き1銘柄リール: 投稿:sakev2/01_H5b_玉川（NN_型_銘柄）。完全一致のみ。
+            # 型が未登録（例 01_H5c_玉川）なら同じ NN＋銘柄 の別の型で代用（部分一致はしない＝01 が 11 等に誤爆しない）。
+            for e in index:
+                if e["source"] == "sakev2" and e["folder"] == ident:
+                    return e, "tag:sakev2"
+            p = ident.split("_")
+            if len(p) >= 3:
+                for e in index:
+                    q = e["folder"].split("_")
+                    if e["source"] == "sakev2" and len(q) >= 3 and q[0] == p[0] and q[-1] == p[-1]:
+                        return e, "tag:sakev2~"
             continue
         for e in index:
             if e["source"] == src and e["folder"] == ident:
@@ -323,6 +336,22 @@ def build_context(entry) -> str:
                 f"図鑑テーマ: {entry['theme']}")
         if entry.get("caption"):
             body += f"\n\n投稿キャプション（テイスティングノート）:\n{entry['caption']}"
+    elif entry.get("source") == "sakev2":
+        # 声付き1銘柄リール（ミヤーンの声＋店の写真・映像）。1本1ポイント。事実源は下の事実ガード・台本のみ。
+        kind = entry["folder"].split("_")[1] if entry["folder"].count("_") >= 2 else ""
+        kind_note = ("店主の見解を述べるタイプ（見解型）。見解は店主の体験・考えとして受け止め、論戦は事実に立脚して信念で応じる。"
+                     if kind == "見解" else
+                     "銘柄の知識・魅力を伝えるタイプ。")
+        body = ("【返信トーン指針】この投稿は声付き1銘柄リール（店主が1本の酒を一人称で語る短尺動画）。"
+                f"{kind_note}盛り上げ役のトーン（体温・遊び）で、来店や飲んでみる体験に繋げる。"
+                "内輪ノリにせず、初めての人にも伝わる言葉で。"
+                "銘柄・蔵・造り・味に答える時は下の『事実ガード／出典』と『動画台本』に書かれた内容だけに立脚し、"
+                "ここに無い数値・固有名詞・受賞・在庫の煽り（残りわずか等）は創作しない（分からない点は来店時にスタッフへ、と案内）。\n\n"
+                f"銘柄: {entry['theme']}")
+        if entry.get("facts"):
+            body += f"\n\n事実ガード／出典（ここに立脚。使ってよい事実と使わない表現を含む）:\n{entry['facts']}"
+        if entry.get("script"):
+            body += f"\n\n動画台本（読み上げ文言）:\n{entry['script']}"
     elif entry.get("source") == "short":
         # 日本酒紹介動画: 銘柄の魅力を伝え、来店・飲み比べ・体験に繋げるトーン
         body = ("【返信トーン指針】この投稿は特定銘柄の紹介動画。コメントには銘柄の魅力・造りの面白さを伝え、"
